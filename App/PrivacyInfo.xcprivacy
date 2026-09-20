@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- La app no hace seguimiento: no hay red, ni analítica, ni SDK de
+	     terceros. Verificado en el código, no solo declarado. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+
+	<!-- No se recoge ningún dato. El progreso vive en el dispositivo y nunca
+	     sale de él: no hay servidor al que enviarlo. -->
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<!-- UserDefaults: preferencias del jugador (canales de salida,
+		     frecuencia del tono). Solo las lee esta app. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>CA92.1</string>
+			</array>
+		</dict>
+
+		<!-- Tiempo de arranque del sistema: CACurrentMediaTime() mide cuánto
+		     se mantiene pulsada la tecla telegráfica y cuánto se tarda en
+		     responder. Es un reloj monótono para medir duraciones dentro de la
+		     app, que es exactamente el motivo 35F9.1. -->
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>35F9.1</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>
