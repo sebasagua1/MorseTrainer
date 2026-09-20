@@ -43,7 +43,20 @@ final class TelegraphKeyViewModel: ObservableObject {
     /// calibrado con sus puntos— con un suelo generoso. La contrapartida es que
     /// la letra tarda en confirmarse, así que la tecla lo muestra con un anillo
     /// que se vacía: el tiempo de espera deja de ser invisible.
-    var letterGap: TimeInterval { max(0.9, 4 * ditDahThreshold) }
+    var letterGap: TimeInterval { letterGapOverride ?? max(0.9, 4 * ditDahThreshold) }
+
+    // MARK: Costuras para pruebas
+    //
+    // El manipulador mide el tiempo real, que es justo lo que hay que probar y
+    // justo lo que no se puede reproducir en un runner cargado: un `sleep` de
+    // 60 ms puede tardar 200 y convertir un punto en una raya. Estas dos
+    // costuras dejan fijar la duración de la pulsación y el margen de cierre
+    // sin depender de la precisión del planificador.
+
+    /// Reloj monótono. Sustituible para simular pulsaciones de duración exacta.
+    var now: () -> CFTimeInterval = { CACurrentMediaTime() }
+    /// Margen de cierre fijo. `nil` usa el calculado sobre el pulso del jugador.
+    var letterGapOverride: TimeInterval?
     /// Seguro anti-bloqueo: si el gesto se cancela (llamada entrante, notificación)
     /// `onEnded` puede no llegar nunca. Pasado este tiempo cerramos como raya.
     private let watchdogTimeout: TimeInterval = 2.0
@@ -83,7 +96,7 @@ final class TelegraphKeyViewModel: ObservableObject {
         letterCommitTask?.cancel()
         letterCommitTask = nil
 
-        pressStart = CACurrentMediaTime()
+        pressStart = now()
         feedback.keyDown()                      // háptica continua + sidetone
 
         dahArmTask = Task { [threshold = ditDahThreshold] in
@@ -106,7 +119,7 @@ final class TelegraphKeyViewModel: ObservableObject {
         dahArmTask?.cancel(); dahArmTask = nil
         watchdogTask?.cancel(); watchdogTask = nil
 
-        let held = CACurrentMediaTime() - pressStart
+        let held = now() - pressStart
         feedback.keyUp()
 
         let symbol: MorseSymbol = held < ditDahThreshold ? .dit : .dah
