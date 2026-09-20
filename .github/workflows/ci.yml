@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Un push nuevo sobre la misma rama cancela la ejecución anterior: los runners
+# de macOS son lentos y caros, no tiene sentido terminar una build ya obsoleta.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests en simulador iOS
+    runs-on: macos-15
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Entorno
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # Los nombres de simulador cambian con cada imagen de runner, así que
+      # fijar "iPhone 16" rompería la CI sin tocar una línea de código. Se elige
+      # el último iPhone disponible y se usa su UDID.
+      - name: Elegir simulador
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          candidates = [
+              (runtime, device)
+              for runtime, devices in runtimes.items() if "iOS" in runtime
+              for device in devices
+              if device.get("isAvailable") and device["name"].startswith("iPhone")
+          ]
+          if not candidates:
+              sys.exit("No hay ningún simulador de iPhone disponible")
+          runtime, device = sorted(candidates, key=lambda item: item[0])[-1]
+          print(device["udid"])
+          ')
+          echo "Simulador: $UDID"
+          echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Compilar y ejecutar los tests
+        run: |
+          xcodebuild test \
+            -project MorseTrainer.xcodeproj \
+            -scheme MorseTrainer \
+            -destination "id=$SIMULATOR_UDID" \
+            -derivedDataPath build \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      # El .xcresult lleva el detalle de qué test falló y por qué; sin él, el
+      # log de xcodebuild es casi inservible para diagnosticar en remoto.
+      - name: Guardar resultados
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TestResults
+          path: TestResults.xcresult
+          retention-days: 7
