@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>89RWP86552</string>
+	<key>destination</key>
+	<string>export</string>
+	<!-- Los símbolos permiten que los informes de fallo de TestFlight lleguen
+	     con nombres de función en vez de direcciones de memoria. -->
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- El número de build lo fija release.sh a partir del historial de git,
+	     no Xcode: así es monótono y se puede rastrear hasta el commit exacto. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

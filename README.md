@@ -115,6 +115,21 @@ test que falla si alguien añade una versión al plan y se olvida de la etapa de
 migración correspondiente, que es el despiste que borra los datos de todo el
 mundo.
 
+## Distribución
+
+El proyecto está listo para archivar: bundle ID `com.sebasagua.MorseTrainer`,
+icono generado por código en `Scripts/make-icon.swift`, equipo de desarrollo y
+declaración de cumplimiento de cifrado.
+
+```bash
+./Scripts/release.sh            # archiva y exporta el .ipa
+./Scripts/release.sh --upload   # además lo sube a App Store Connect
+```
+
+Los pasos que exigen una cuenta de Apple —registrar el identificador, crear el
+registro de la app y obtener el Issuer ID— están en
+[`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
+
 ## Estado
 
 Funciona el bucle completo —mapa, recepción, transmisión, rondas de palabra,
@@ -126,6 +141,5 @@ Lo que falta antes de que esto sea una app publicable:
   Engine ni flash, así que esas rutas solo están verificadas a nivel de código.
 - **Sin tienda ni cosméticos.** El cobre se gana y se acumula, pero todavía no
   se gasta en nada.
-- **Sin icono ni catálogo de assets.**
 - **Sin licencia.** Sin un archivo `LICENSE`, el código es «todos los derechos
   reservados» por defecto.
