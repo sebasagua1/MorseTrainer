@@ -8,7 +8,6 @@ struct HomeView: View {
     @State private var copper = 0
     @State private var streak = 0
     @State private var freeSession: GameSession?
-    @State private var showingMap = false
     @State private var showingSettings = false
 
     private var alphabet: [Character] { GameSession.unlockedAlphabet(upTo: highestUnlocked) }
@@ -20,11 +19,18 @@ struct HomeView: View {
                 VStack(spacing: 16) {
                     header
 
-                    CampaignCard(level: LevelPlan.level(id: highestUnlocked),
-                                 completed: highestUnlocked - 1,
-                                 total: LevelPlan.levels.count) {
-                        showingMap = true
+                    // NavigationLink y no un Button con `isPresented`: el
+                    // modificador `navigationDestination(isPresented:)` es
+                    // frágil sobre contenedores perezosos y se quedaba sin
+                    // hacer nada al pulsar.
+                    NavigationLink {
+                        MapView(store: store, settings: settings)
+                    } label: {
+                        CampaignCard(level: LevelPlan.level(id: highestUnlocked),
+                                     completed: highestUnlocked - 1,
+                                     total: LevelPlan.levels.count)
                     }
+                    .buttonStyle(PressableCard())
 
                     // Los modos libres solo tienen sentido con material que
                     // repasar. Con dos letras no hay nada que medir todavía.
@@ -49,9 +55,6 @@ struct HomeView: View {
                     .accessibilityLabel("Ajustes")
                 }
             }
-        }
-        .navigationDestination(isPresented: $showingMap) {
-            MapView(store: store, settings: settings)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(settings: settings)
@@ -78,7 +81,7 @@ struct HomeView: View {
         case .practice:   freeSession = .practice(alphabet: alphabet, timing: timing)
         case .timeAttack: freeSession = .timeAttack(alphabet: alphabet, timing: timing)
         case .survival:   freeSession = .survival(alphabet: alphabet, timing: timing)
-        case .level:      showingMap = true
+        case .level:      break   // la campaña entra por NavigationLink
         }
     }
 
@@ -112,41 +115,39 @@ private struct CampaignCard: View {
     let level: Level?
     let completed: Int
     let total: Int
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Label(GameSession.Mode.level.title,
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(GameSession.Mode.level.title,
                           systemImage: GameSession.Mode.level.symbol)
-                        .font(.headline)
-                    Spacer()
-                    Text("\(completed)/\(total)")
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-
-                if let level {
-                    Text(level.title)
-                        .font(.title2.weight(.bold))
-                    Text("Aprende \(level.newCharacters.map(String.init).joined(separator: " y "))  ·  \(Int(level.timing.characterWPM))/\(Int(level.timing.effectiveWPM)) WPM")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Campaña completa")
-                        .font(.title2.weight(.bold))
-                }
-
-                ProgressView(value: Double(completed), total: Double(total))
-                    .tint(.accentColor)
+                    .font(.headline)
+                Spacer()
+                Text("\(completed)/\(total)")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground)))
+
+            if let level {
+                Text(level.title)
+                    .font(.title2.weight(.bold))
+                Text("Aprende \(level.newCharacters.map(String.init).joined(separator: " y "))  ·  \(Int(level.timing.characterWPM))/\(Int(level.timing.effectiveWPM)) WPM")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Campaña completa")
+                    .font(.title2.weight(.bold))
+            }
+
+            ProgressView(value: Double(completed), total: Double(total))
+                .tint(.accentColor)
         }
-        .buttonStyle(PressableCard())
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(Color(.secondarySystemGroupedBackground)))
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         .accessibilityHint("Abre el mapa de niveles")
     }
 }
