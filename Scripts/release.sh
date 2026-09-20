@@ -30,6 +30,9 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "⚠️  Hay cambios sin commitear: el número de build no describirá lo que subes."
 fi
 
+# Bash 3.2 (el que trae macOS) aborta con `set -u` al expandir un array vacío,
+# así que se expande con el idioma `${x[@]+"${x[@]}"}`, que no toca el array si
+# no está definido. Sin esto el guion solo funciona en la rama con --upload.
 AUTH_ARGS=()
 if $UPLOAD; then
   : "${ASC_KEY_ID:?Falta ASC_KEY_ID}"
@@ -52,7 +55,7 @@ xcodebuild archive \
   -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" \
   -allowProvisioningUpdates \
-  "${AUTH_ARGS[@]}" \
+  ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"} \
   CURRENT_PROJECT_VERSION="$BUILD_NUMBER"
 
 echo "▸ Exportando el .ipa…"
@@ -61,7 +64,7 @@ xcodebuild -exportArchive \
   -exportOptionsPlist Scripts/ExportOptions.plist \
   -exportPath "$EXPORT_DIR" \
   -allowProvisioningUpdates \
-  "${AUTH_ARGS[@]}"
+  ${AUTH_ARGS[@]+"${AUTH_ARGS[@]}"}
 
 IPA="$(find "$EXPORT_DIR" -name '*.ipa' | head -1)"
 echo "▸ Listo: ${IPA}"
