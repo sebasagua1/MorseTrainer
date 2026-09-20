@@ -80,7 +80,7 @@ Sources/
 └── Features/    ViewModels (@MainActor) y vistas.
                  Telegraph/ · Lesson/
 App/             Punto de entrada y mapa de progresión.
-Tests/           56 tests en 5 suites (Swift Testing).
+Tests/           65 tests en 6 suites (Swift Testing).
 ```
 
 `ARCHITECTURE.md` entra en el detalle de capas, persistencia y accesibilidad.
@@ -101,6 +101,20 @@ xcodebuild test -project MorseTrainer.xcodeproj -scheme MorseTrainer -destinatio
 Añadir un `.swift` dentro de `Sources/`, `App/` o `Tests/` lo incorpora al
 target automáticamente: no hay que tocar el `project.pbxproj`.
 
+## Versionado del esquema
+
+Los modelos de SwiftData viven dentro de `MorseSchemaV1`, no sueltos en el
+módulo, y el contenedor se abre a través de `MorseMigrationPlan`. Con una sola
+versión el plan está vacío, y eso es justo lo que se quiere: añadir la V2 será
+editar dos arrays en `Sources/Services/MorseSchema.swift`, en vez de reescribir
+la construcción del contenedor con usuarios ya instalados.
+
+El resto de la app usa `PlayerProfile`, `LetterRecord`… a través de alias, así
+que publicar una versión nueva no toca ni una línea fuera de ese archivo. Hay un
+test que falla si alguien añade una versión al plan y se olvida de la etapa de
+migración correspondiente, que es el despiste que borra los datos de todo el
+mundo.
+
 ## Estado
 
 Funciona el bucle completo —mapa, recepción, transmisión, rondas de palabra,
@@ -110,9 +124,6 @@ Lo que falta antes de que esto sea una app publicable:
 
 - **Háptica y linterna sin probar en hardware.** El simulador no tiene Taptic
   Engine ni flash, así que esas rutas solo están verificadas a nivel de código.
-- **Sin plan de migración de esquema.** SwiftData hace migración ligera para
-  cambios aditivos, pero cualquier renombrado necesita un `VersionedSchema` con
-  su `MigrationPlan`. En cuanto haya usuarios reales, esto deja de ser opcional.
 - **Sin tienda ni cosméticos.** El cobre se gana y se acumula, pero todavía no
   se gasta en nada.
 - **Sin icono ni catálogo de assets.**

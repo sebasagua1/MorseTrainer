@@ -1,74 +1,6 @@
 import Foundation
 import SwiftData
 
-// MARK: - Modelos persistidos
-
-@Model
-final class PlayerProfile {
-    var highestUnlockedLevel: Int = 1
-    var copper: Int = 0
-    var streakDays: Int = 0
-    /// Último día jugado, normalizado a medianoche local.
-    var lastPlayedDay: Date?
-    var totalDrills: Int = 0
-    var createdAt: Date = Date()
-
-    @Relationship(deleteRule: .cascade, inverse: \LetterRecord.profile)
-    var letters: [LetterRecord] = []
-
-    @Relationship(deleteRule: .cascade, inverse: \ConfusionRecord.profile)
-    var confusions: [ConfusionRecord] = []
-
-    @Relationship(deleteRule: .cascade, inverse: \SessionRecord.profile)
-    var sessions: [SessionRecord] = []
-
-    init() {}
-}
-
-/// Historial de por vida de un carácter. `symbol` es `String` y no `Character`
-/// porque SwiftData solo persiste tipos `Codable`, y `Character` no lo es.
-@Model
-final class LetterRecord {
-    var symbol: String = ""
-    var attempts: Int = 0
-    var correct: Int = 0
-    var medianResponseTime: Double = 0
-    var lastPracticed: Date = Date()
-    var profile: PlayerProfile?
-
-    init(symbol: String) { self.symbol = symbol }
-
-    var character: Character? { symbol.first }
-    var accuracy: Double { attempts == 0 ? 0 : Double(correct) / Double(attempts) }
-}
-
-@Model
-final class ConfusionRecord {
-    var shown: String = ""
-    var answered: String = ""
-    var count: Int = 0
-    var lastSeen: Date = Date()
-    var profile: PlayerProfile?
-
-    init(shown: String, answered: String) {
-        self.shown = shown
-        self.answered = answered
-    }
-}
-
-@Model
-final class SessionRecord {
-    var levelID: Int = 0
-    var date: Date = Date()
-    var accuracy: Double = 0
-    var copperEarned: Int = 0
-    var mastered: Bool = false
-    var medianResponseTime: Double = 0
-    var profile: PlayerProfile?
-
-    init(levelID: Int) { self.levelID = levelID }
-}
-
 // MARK: - Store
 
 @MainActor
@@ -93,15 +25,21 @@ final class PersistenceStore {
     private let maxSeededConfusion = 3
 
     init(inMemory: Bool = false) {
-        let schema = Schema([PlayerProfile.self, LetterRecord.self,
-                             ConfusionRecord.self, SessionRecord.self])
+        // El esquema se deriva de la versión, no de una lista suelta de modelos:
+        // así el contenedor y el plan de migración no pueden desincronizarse.
+        let schema = Schema(versionedSchema: MorseSchemaV1.self)
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: inMemory)
         do {
-            container = try ModelContainer(for: schema, configurations: configuration)
+            container = try ModelContainer(for: schema,
+                                           migrationPlan: MorseMigrationPlan.self,
+                                           configurations: configuration)
             isEphemeral = inMemory
         } catch {
-            // Un almacén corrupto no debe dejar la app inservible: se degrada a
-            // memoria y el jugador puede seguir practicando esta sesión.
+            // Aquí cae tanto un almacén corrupto como una migración fallida. En
+            // ambos casos se degrada a memoria y **no se borra el archivo**: los
+            // datos del jugador siguen en disco, recuperables con una corrección
+            // posterior. Borrarlo para «arreglar» el arranque sería destruir lo
+            // único que permite salvarlos.
             let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
             container = try! ModelContainer(for: schema, configurations: fallback)
             isEphemeral = true

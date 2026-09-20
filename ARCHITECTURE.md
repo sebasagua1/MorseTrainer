@@ -75,14 +75,17 @@ RootView
 
 ## Persistencia (SwiftData)
 
+Los modelos se declaran dentro de `MorseSchemaV1: VersionedSchema` y el resto
+del código los usa por alias (`PlayerProfile`, `LetterRecord`, …). El contenedor
+se abre siempre a través de `MorseMigrationPlan`, incluso con una sola versión:
+es lo que permite que la V2 sea un cambio local en `MorseSchema.swift`.
+
 ```swift
-@Model final class PlayerProfileEntity {
-    var highestLevel: Int
-    var copper: Int
-    var streakDays: Int
-    var lastPlayed: Date
-    @Relationship(deleteRule: .cascade) var stats: [CharacterStatEntity]
+enum MorseSchemaV1: VersionedSchema {
+    static var versionIdentifier: Schema.Version { .init(1, 0, 0) }
+    @Model final class PlayerProfile { … }
 }
+typealias PlayerProfile = MorseSchemaV1.PlayerProfile
 ```
 
 Las estadísticas por carácter persisten **entre niveles**: un fallo en la A del
