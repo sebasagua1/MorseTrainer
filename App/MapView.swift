@@ -5,6 +5,7 @@ import SwiftUI
 /// racha, tienda) vive en `AppViewModel` cuando exista `PersistenceStore`.
 struct MapView: View {
     let store: PersistenceStore
+    @ObservedObject var settings: GameSettings
 
     // El estado vive en SwiftData; estas copias existen solo para que SwiftUI
     // sepa cuándo redibujar. Se refrescan al volver de una lección.
@@ -14,8 +15,7 @@ struct MapView: View {
     @State private var activeLevel: Level?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
+        ScrollView {
                 LazyVStack(spacing: 28, pinnedViews: [.sectionHeaders]) {
                     ForEach(LevelPlan.worlds, id: \.self) { world in
                         Section {
@@ -37,38 +37,29 @@ struct MapView: View {
                 .padding(.vertical, 24)
                 .frame(maxWidth: .infinity)
             }
-            .navigationTitle("Progreso")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if streak > 0 {
-                        Label("\(streak)", systemImage: "flame.fill")
-                            .foregroundStyle(.orange)
-                            .labelStyle(.titleAndIcon)
-                            .font(.callout.weight(.semibold).monospacedDigit())
-                            .accessibilityLabel("Racha de \(streak) días")
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Label("\(copper)", systemImage: "circle.hexagongrid.fill")
-                        .foregroundStyle(.orange)
-                        .labelStyle(.titleAndIcon)
-                        .font(.callout.weight(.semibold).monospacedDigit())
-                        .accessibilityLabel("\(copper) de cobre")
-                }
+        .navigationTitle("Progreso")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Label("\(copper)", systemImage: "circle.hexagongrid.fill")
+                    .foregroundStyle(.orange)
+                    .labelStyle(.titleAndIcon)
+                    .font(.callout.weight(.semibold).monospacedDigit())
+                    .accessibilityLabel("\(copper) de cobre")
             }
-            .overlay(alignment: .bottom) {
-                if store.isEphemeral {
-                    Text("Progreso no guardado en este dispositivo")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(8)
-                }
+        }
+        .overlay(alignment: .bottom) {
+            if store.isEphemeral {
+                Text("Progreso no guardado en este dispositivo")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
             }
         }
         .fullScreenCover(item: $activeLevel, onDismiss: refresh) { level in
             // El VM ya persiste por su cuenta (también al quedarse sin
             // corazones); aquí solo se relee lo que quedó en disco.
-            LessonView(level: level, store: store)
+            LessonView(level: level, store: store, settings: settings)
         }
         .onAppear(perform: refresh)
     }
@@ -151,4 +142,4 @@ private struct LevelNode: View {
     }
 }
 
-#Preview { MapView(store: PersistenceStore(inMemory: true)) }
+#Preview { NavigationStack { MapView(store: PersistenceStore(inMemory: true), settings: GameSettings()) } }

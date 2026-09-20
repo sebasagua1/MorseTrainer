@@ -5,6 +5,9 @@ import Testing
 /// Doble de pruebas: el manipulador real arranca Core Haptics y AVAudioEngine.
 @MainActor
 final class SilentFeedback: TelegraphFeedbackProviding {
+    var isAudioEnabled = true
+    var isHapticsEnabled = true
+    var toneFrequency: Double = 600
     private(set) var downs = 0
     private(set) var ups = 0
     func keyDown() { downs += 1 }

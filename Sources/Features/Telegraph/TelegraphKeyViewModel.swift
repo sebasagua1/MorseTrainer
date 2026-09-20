@@ -124,6 +124,13 @@ final class TelegraphKeyViewModel: ObservableObject {
         commitCharacter()
     }
 
+    /// Aplica las preferencias del jugador al manipulador.
+    func apply(_ settings: GameSettings) {
+        feedback.isAudioEnabled = settings.audioEnabled
+        feedback.isHapticsEnabled = settings.hapticsEnabled
+        feedback.toneFrequency = settings.toneFrequency
+    }
+
     func reset() {
         dahArmTask?.cancel(); watchdogTask?.cancel(); letterCommitTask?.cancel()
         dahArmTask = nil; watchdogTask = nil; letterCommitTask = nil

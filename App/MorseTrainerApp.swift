@@ -17,7 +17,7 @@ struct MorseTrainerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MapView(store: store)
+            HomeView(store: store)
         }
     }
 }

@@ -21,6 +21,8 @@ final class LessonViewModel: ObservableObject {
     @Published private(set) var shakeTrigger = 0
     /// Racha de aciertos seguidos dentro del nivel (multiplicador de cobre).
     @Published private(set) var comboStreak = 0
+    /// Segundos que quedan en los modos con reloj.
+    @Published private(set) var secondsRemaining: TimeInterval = 0
     /// Última respuesta y su objetivo: la vista los usa para colorear la tecla
     /// pulsada y revelar la correcta durante el veredicto.
     @Published private(set) var lastAnswer: Character?
@@ -32,13 +34,22 @@ final class LessonViewModel: ObservableObject {
     @Published private(set) var isTransmitting = false
 
     var progress: Double {
-        guard level.drillCount > 0 else { return 0 }
-        return min(1, Double(itemsCompleted) / Double(level.drillCount))
+        if let limit = session.itemLimit, limit > 0 {
+            return min(1, Double(itemsCompleted) / Double(limit))
+        }
+        if let total = session.timeLimit, total > 0 {
+            return min(1, 1 - secondsRemaining / total)
+        }
+        return 0   // sin final: la barra no significa nada
     }
 
     // MARK: Dependencias
 
-    let level: Level
+    let session: GameSession
+    /// Nivel de campaña, si la sesión lo es. Los modos libres no tienen.
+    var level: Level? { session.level }
+    /// Velocidad actual: en supervivencia sube durante la partida.
+    private(set) var timing: FarnsworthTiming
     /// Expuesto para Ajustes (canales, frecuencia del tono). Para el estado
     /// en vivo, la vista usa `isKeyed` / `isTransmitting` de este mismo VM.
     let transmitter: MorseTransmitter
@@ -57,29 +68,44 @@ final class LessonViewModel: ObservableObject {
     private var advanceTask: Task<Void, Never>?
 
     private let store: PersistenceStore?
+    private let settings: GameSettings
     /// Prior con el que arrancó la sesión. Se guarda para poder restarlo al
     /// fundir: el programador acumula sobre lo sembrado, así que sin esto el
     /// historial se contaría dos veces en cada lección.
     private var seededStats: [Character: CharacterStat] = [:]
     private var seededConfusions: [ConfusionPair: Int] = [:]
     private var hasPersisted = false
+    private var correctStreakForRamp = 0
+    private var countdownTask: Task<Void, Never>?
 
     private let keyboardSize = 6
     private let judgingPause: TimeInterval = 0.6
 
-    init(level: Level,
+    convenience init(level: Level,
+                     store: PersistenceStore? = nil,
+                     settings: GameSettings? = nil,
+                     transmitter: MorseTransmitter? = nil,
+                     keyModel: TelegraphKeyViewModel? = nil) {
+        self.init(session: .level(level), store: store, settings: settings,
+                  transmitter: transmitter, keyModel: keyModel)
+    }
+
+    init(session: GameSession,
          store: PersistenceStore? = nil,
+         settings: GameSettings? = nil,
          transmitter: MorseTransmitter? = nil,
          keyModel: TelegraphKeyViewModel? = nil) {
         let transmitter = transmitter ?? MorseTransmitter()
-        self.level = level
+        self.session = session
+        self.settings = settings ?? GameSettings()
+        self.timing = session.timing
         self.store = store
         self.transmitter = transmitter
-        self.hearts = level.hearts
-        self.scheduler = DrillScheduler(alphabet: level.activeAlphabet,
-                                        newCharacters: level.newCharacters)
-        self.words = LevelPlan.words(for: level.activeAlphabet)
-        self.keyModel = keyModel ?? TelegraphKeyViewModel(timing: level.timing)
+        self.hearts = session.hearts ?? 0
+        self.scheduler = DrillScheduler(alphabet: session.alphabet,
+                                        newCharacters: session.newCharacters)
+        self.words = LevelPlan.words(for: session.alphabet)
+        self.keyModel = keyModel ?? TelegraphKeyViewModel(timing: session.timing)
 
         // El manipulador solo sabe producir caracteres; quien juzga es la lección.
         self.keyModel.onCharacter = { [weak self] _, decoded in
@@ -93,8 +119,16 @@ final class LessonViewModel: ObservableObject {
     // MARK: - Ciclo de la lección
 
     func start() {
+        // Los ajustes se aplican al arrancar, no al construir: el jugador
+        // puede cambiarlos entre partidas sin recrear nada.
+        transmitter.channels = settings.channels
+        transmitter.toneFrequency = settings.toneFrequency
+        keyModel.apply(settings)
         transmitter.prepare()
-        hearts = level.hearts
+        hearts = session.hearts ?? 0
+        timing = session.timing
+        correctStreakForRamp = 0
+        secondsRemaining = session.timeLimit ?? 0
         itemsCompleted = 0
         copperEarned = 0
         comboStreak = 0
@@ -104,18 +138,20 @@ final class LessonViewModel: ObservableObject {
         responseTimes.removeAll()
         hasPersisted = false
 
-        let seed = store?.seed(for: level.activeAlphabet) ?? (stats: [:], confusions: [:])
+        let seed = store?.seed(for: session.alphabet) ?? (stats: [:], confusions: [:])
         seededStats = seed.stats
         seededConfusions = seed.confusions
-        scheduler = DrillScheduler(alphabet: level.activeAlphabet,
-                                   newCharacters: level.newCharacters,
+        scheduler = DrillScheduler(alphabet: session.alphabet,
+                                   newCharacters: session.newCharacters,
                                    seededStats: seededStats,
                                    seededConfusions: seededConfusions)
         store?.registerPlay()
+        startCountdownIfNeeded()
         Task { await presentNextDrill() }
     }
 
     func exit() {
+        countdownTask?.cancel()
         advanceTask?.cancel()
         transmitter.cancel()
         keyModel.reset()
@@ -135,14 +171,20 @@ final class LessonViewModel: ObservableObject {
     // MARK: - Construcción de ejercicios
 
     private func presentNextDrill() async {
-        guard hearts > 0 else {
+        if session.hearts != nil, hearts <= 0 {
             // Quedarse sin corazones también enseña: los fallos de esta pasada
             // son justo los datos que el motor necesita para la siguiente.
-            persist(makeSummary(mastered: false))
-            phase = .outOfHearts
+            if session.mode == .level {
+                persist(makeSummary(mastered: false))
+                phase = .outOfHearts
+            } else {
+                // En supervivencia quedarse sin corazones ES el final de la
+                // partida, no un fracaso: lo que importa es hasta dónde llegó.
+                finish()
+            }
             return
         }
-        guard itemsCompleted < level.drillCount else { finish(); return }
+        if let limit = session.itemLimit, itemsCompleted >= limit { finish(); return }
 
         let next = makeDrill()
         drill = next
@@ -151,7 +193,7 @@ final class LessonViewModel: ObservableObject {
         lastAnswer = nil
         lastTarget = nil
         keyModel.reset()
-        keyModel.timing = level.timing
+        keyModel.timing = timing
 
         await presentPrompt(for: next)
     }
@@ -160,7 +202,7 @@ final class LessonViewModel: ObservableObject {
         switch drill.kind {
         case .reception:
             phase = .presenting
-            await transmitter.play(text: drill.prompt, timing: level.timing)
+            await transmitter.play(text: drill.prompt, timing: timing)
         case .transmission, .word:
             // En transmisión el prompt es visual: no se le regala el audio,
             // el jugador debe recuperar el patrón de memoria.
@@ -171,8 +213,9 @@ final class LessonViewModel: ObservableObject {
     }
 
     private func makeDrill() -> Drill {
-        let wordZoneStart = level.drillCount - level.mix.wordRounds
-        if level.mix.wordRounds > 0, itemsCompleted >= wordZoneStart, let word = words.randomElement() {
+        let wordZoneStart = (session.itemLimit ?? 0) - session.mix.wordRounds
+        if session.mix.wordRounds > 0, itemsCompleted >= wordZoneStart,
+           let word = words.randomElement() {
             return Drill(kind: .word, prompt: word, options: [])
         }
         let character = scheduler.nextCharacter()
@@ -189,15 +232,15 @@ final class LessonViewModel: ObservableObject {
     private func preferReception() -> Bool {
         let total = receptionCount + transmissionCount
         guard total > 0 else { return true }
-        return Double(receptionCount) / Double(total) < level.mix.receptionShare
+        return Double(receptionCount) / Double(total) < session.mix.receptionShare
     }
 
     /// Teclado dinámico. Con alfabeto pequeño se muestra entero; a partir de ahí
     /// los distractores se eligen entre los caracteres que el jugador *ya*
     /// confunde con este. Un teclado al azar deja aprobar por descarte.
     private func keyboardOptions(for target: Character) -> [Character] {
-        guard level.activeAlphabet.count > keyboardSize else {
-            return level.activeAlphabet.shuffled()
+        guard session.alphabet.count > keyboardSize else {
+            return session.alphabet.shuffled()
         }
         var options: Set<Character> = [target]
         let confusable = scheduler.confusions
@@ -208,7 +251,7 @@ final class LessonViewModel: ObservableObject {
         for candidate in confusable where options.count < keyboardSize {
             options.insert(candidate)
         }
-        for candidate in level.activeAlphabet.shuffled() where options.count < keyboardSize {
+        for candidate in session.alphabet.shuffled() where options.count < keyboardSize {
             options.insert(candidate)
         }
         return options.shuffled()
@@ -274,9 +317,11 @@ final class LessonViewModel: ObservableObject {
         if correct {
             comboStreak += 1
             copperEarned += reward(responseTime: responseTime)
+            rampSpeedIfNeeded()
         } else {
             comboStreak = 0
-            hearts -= 1
+            correctStreakForRamp = 0
+            if session.hearts != nil { hearts -= 1 }
             shakeTrigger += 1
         }
 
@@ -297,7 +342,7 @@ final class LessonViewModel: ObservableObject {
     private func reward(responseTime: TimeInterval) -> Int {
         var copper = 2
         if !usedReplay {
-            let promptDuration = level.timing.duration(of: drill?.prompt ?? "")
+            let promptDuration = timing.duration(of: drill?.prompt ?? "")
             if responseTime < promptDuration * 0.8 { copper += 2 }
             else if responseTime < promptDuration * 1.5 { copper += 1 }
         }
@@ -309,17 +354,22 @@ final class LessonViewModel: ObservableObject {
     // MARK: - Cierre
 
     private func finish() {
+        countdownTask?.cancel()
         advanceTask?.cancel()
         transmitter.cancel()
         keyModel.reset()
 
-        let mastered = scheduler.hasMastered(level.mastery, rollingResults: rollingResults)
-            && medianResponseTime <= level.mastery.medianResponseTime
-
-        if mastered {
-            copperEarned += level.copperReward
-            copperEarned += hearts * 5                       // bono por corazones intactos
-            if hearts == level.hearts { copperEarned += 10 } // ronda perfecta
+        // El dominio solo existe en la campaña: los modos libres no enseñan
+        // caracteres nuevos, así que no hay nada que desbloquear.
+        var mastered = false
+        if let level {
+            mastered = scheduler.hasMastered(level.mastery, rollingResults: rollingResults)
+                && medianResponseTime <= level.mastery.medianResponseTime
+            if mastered {
+                copperEarned += level.copperReward
+                copperEarned += hearts * 5
+                if hearts == level.hearts { copperEarned += 10 }   // ronda perfecta
+            }
         }
 
         let summary = makeSummary(mastered: mastered)
@@ -331,7 +381,11 @@ final class LessonViewModel: ObservableObject {
         let correct = rollingResults.filter { $0 }.count
         let accuracy = rollingResults.isEmpty ? 0 : Double(correct) / Double(rollingResults.count)
         return LessonSummary(
-            levelID: level.id,
+            mode: session.mode,
+            levelID: level?.id ?? 0,
+            itemsCorrect: correct,
+            itemsTotal: rollingResults.count,
+            topEffectiveWPM: timing.effectiveWPM,
             accuracy: accuracy,
             heartsRemaining: hearts,
             copperEarned: copperEarned,
@@ -357,6 +411,54 @@ final class LessonViewModel: ObservableObject {
         guard !responseTimes.isEmpty else { return .greatestFiniteMagnitude }
         let sorted = responseTimes.sorted()
         return sorted[sorted.count / 2]
+    }
+
+    // MARK: - Reloj y rampa
+
+    /// Cuenta atrás de los modos con tiempo. Usa deadlines absolutos: restar un
+    /// segundo por vuelta acumularía el retraso del planificador y la partida
+    /// duraría de más.
+    private func startCountdownIfNeeded() {
+        countdownTask?.cancel()
+        guard let total = session.timeLimit else { return }
+        secondsRemaining = total
+        countdownTask = Task {
+            let clock = ContinuousClock()
+            let end = clock.now.advanced(by: .seconds(total))
+            while !Task.isCancelled {
+                let left = clock.now.duration(to: end)
+                let seconds = Double(left.components.seconds)
+                    + Double(left.components.attoseconds) * 1e-18
+                if seconds <= 0 { break }
+                self.secondsRemaining = seconds
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard !Task.isCancelled else { return }
+            self.secondsRemaining = 0
+            self.timeExpired()
+        }
+    }
+
+    private func timeExpired() {
+        guard case .completed = phase else {
+            advanceTask?.cancel()
+            transmitter.cancel()
+            keyModel.reset()
+            finish()
+            return
+        }
+    }
+
+    /// En supervivencia la velocidad sube cada pocos aciertos seguidos. Es lo
+    /// que convierte el modo en una medida de tu techo real: la campaña se
+    /// detiene en cuanto dominas el nivel y nunca te enseña dónde te rompes.
+    private func rampSpeedIfNeeded() {
+        guard session.speedRamp else { return }
+        correctStreakForRamp += 1
+        guard correctStreakForRamp >= GameSession.rampInterval else { return }
+        correctStreakForRamp = 0
+        timing = session.ramped(from: timing)
+        keyModel.timing = timing
     }
 
     /// Estadística acumulada del nivel, para que `PersistenceStore` la funda con

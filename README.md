@@ -31,6 +31,23 @@ para evitarlas —son las más cortas y tientan a contar—, así que se respeta
 petición pero se compensa: la velocidad de carácter nunca baja de 18 WPM y desde
 el nivel 2 entran caracteres de 2–3 elementos.
 
+## Modos
+
+| Modo | Qué mide |
+|---|---|
+| **Campaña** | 30 niveles, un carácter nuevo cada uno, con corazones y dominio |
+| **Práctica libre** | Repaso sin corazones ni final. Sigue alimentando al motor adaptativo, así que practicar aquí cambia lo que sale en la campaña |
+| **Contrarreloj** | 60 segundos, casi todo recepción. Cuántas letras reconoces sin pensar |
+| **Supervivencia** | Tres corazones y la velocidad subiendo. Dónde está tu techo real |
+
+Los tres modos libres se juegan sobre el alfabeto ya desbloqueado y no enseñan
+caracteres nuevos. Supervivencia existe porque la campaña se detiene en cuanto
+dominas un nivel y nunca llega a enseñarte dónde te rompes.
+
+Internamente un nivel de campaña **es** una sesión más, no un caso especial:
+`GameSession` describe qué la termina, si hay corazones, si la velocidad sube y
+si cuenta para el progreso. El bucle de juego es uno solo.
+
 ## El motor adaptativo
 
 Cada carácter tiene un peso en la cola que sube con el déficit de precisión, con
@@ -80,7 +97,7 @@ Sources/
 └── Features/    ViewModels (@MainActor) y vistas.
                  Telegraph/ · Lesson/
 App/             Punto de entrada y mapa de progresión.
-Tests/           65 tests en 6 suites (Swift Testing).
+Tests/           89 tests en 10 suites (Swift Testing).
 ```
 
 `ARCHITECTURE.md` entra en el detalle de capas, persistencia y accesibilidad.
@@ -143,5 +160,7 @@ Lo que falta antes de que esto sea una app publicable:
   Engine ni flash, así que esas rutas solo están verificadas a nivel de código.
 - **Sin tienda ni cosméticos.** El cobre se gana y se acumula, pero todavía no
   se gasta en nada.
+- **Sin récords por modo.** Contrarreloj y supervivencia no guardan tu mejor
+  marca todavía, que es justo lo que los hace volver a jugarse.
 - **Sin licencia.** Sin un archivo `LICENSE`, el código es «todos los derechos
   reservados» por defecto.

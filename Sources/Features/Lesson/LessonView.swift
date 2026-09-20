@@ -10,11 +10,20 @@ struct LessonView: View {
 
     init(level: Level,
          store: PersistenceStore? = nil,
+         settings: GameSettings? = nil,
+         onFinish: @escaping (LessonSummary) -> Void = { _ in }) {
+        self.init(session: .level(level), store: store,
+                  settings: settings, onFinish: onFinish)
+    }
+
+    init(session: GameSession,
+         store: PersistenceStore? = nil,
+         settings: GameSettings? = nil,
          onFinish: @escaping (LessonSummary) -> Void = { _ in }) {
         // `StateObject(wrappedValue:)` con un autoclosure: SwiftUI puede
         // descartar instancias creadas en `init`, así que no guardamos ninguna
         // referencia suelta al VM ni a sus objetos internos.
-        _model = StateObject(wrappedValue: LessonViewModel(level: level, store: store))
+        _model = StateObject(wrappedValue: LessonViewModel(session: session, store: store, settings: settings))
         self.onFinish = onFinish
     }
 
@@ -68,9 +77,26 @@ struct LessonView: View {
             }
             .accessibilityLabel("Salir de la lección")
 
-            LessonProgressBar(progress: model.progress)
+            if model.session.isEndless {
+                // Sin final no hay barra que llenar: se muestra lo que sí
+                // avanza, que son los aciertos.
+                Text("\(model.itemsCompleted)")
+                    .font(.headline.monospacedDigit())
+                    .frame(maxWidth: .infinity)
+                    .accessibilityLabel("\(model.itemsCompleted) ítems")
+            } else {
+                LessonProgressBar(progress: model.progress)
+            }
 
-            HeartsBar(remaining: model.hearts, total: model.level.hearts)
+            if let total = model.session.hearts {
+                HeartsBar(remaining: model.hearts, total: total)
+            } else if model.session.timeLimit != nil {
+                CountdownBadge(secondsRemaining: model.secondsRemaining)
+            } else {
+                Text("\(Int(model.timing.effectiveWPM)) WPM")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -97,7 +123,7 @@ struct LessonView: View {
                                           keyModel: model.keyModel)
                 }
 
-                if case .judging(let correct) = model.phase {
+                if case .judging(let correct) = model.phase, drill.kind != .reception {
                     JudgeBanner(correct: correct,
                                 target: model.lastTarget ?? " ",
                                 answer: model.lastAnswer,
@@ -128,15 +154,38 @@ struct ReceptionDrillView: View {
         return false
     }
 
-    var body: some View {
-        VStack(spacing: 24) {
-            Text("¿Qué letra has oído?")
-                .font(.title3.weight(.semibold))
-                .padding(.top, 12)
+    private var judgement: Bool? {
+        if case .judging(let correct) = model.phase { return correct }
+        return nil
+    }
 
-            CarrierIndicator(isKeyed: model.isKeyed,
-                             isPlaying: model.isTransmitting)
-                .frame(maxHeight: .infinity)
+    var body: some View {
+        VStack(spacing: 20) {
+            // El centro de la pantalla ya no es un hueco: lleva el estado, el
+            // destello y, tras responder, la letra con su patrón. Antes el
+            // jugador miraba 40 % de pantalla vacía sin saber si sonaba algo.
+            VStack(spacing: 18) {
+                Text(statusText)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(statusTint)
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: statusText)
+
+                ZStack {
+                    CarrierIndicator(isKeyed: model.isKeyed,
+                                     isPlaying: model.isTransmitting)
+
+                    if let target = revealedTarget {
+                        RevealedAnswer(character: target,
+                                       pattern: MorseAlphabet.code(for: target)?.pattern ?? "",
+                                       correct: judgement ?? false)
+                            .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    }
+                }
+                .frame(height: 150)
+                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: revealedTarget)
+            }
+            .frame(maxHeight: .infinity)
 
             Button {
                 model.replay()
@@ -149,7 +198,7 @@ struct ReceptionDrillView: View {
             }
             .buttonStyle(.plain)
             .disabled(!isAnswering)
-            .opacity(isAnswering ? 1 : 0.4)
+            .opacity(isAnswering ? 1 : 0.35)
             .accessibilityHint("Vuelve a reproducir la señal. No cuesta corazones.")
 
             DynamicKeyboardView(options: drill.options,
@@ -163,9 +212,41 @@ struct ReceptionDrillView: View {
         }
     }
 
+    private var statusText: String {
+        if let correct = judgement { return correct ? "¡Correcto!" : "Era esta" }
+        return model.isTransmitting ? "Escucha…" : "¿Qué letra has oído?"
+    }
+
+    private var statusTint: Color {
+        guard let correct = judgement else { return .primary }
+        return correct ? .green : .red
+    }
+
     private var revealedTarget: Character? {
         if case .judging = model.phase { return model.lastTarget }
         return nil
+    }
+}
+
+/// La letra y su patrón, revelados solo después de responder. Enseñarlos antes
+/// convierte el ejercicio de escucha en lectura y rompe el método entero.
+private struct RevealedAnswer: View {
+    let character: Character
+    let pattern: String
+    let correct: Bool
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(String(character))
+                .font(.system(size: 72, weight: .bold, design: .rounded))
+            Text(pattern)
+                .font(.system(.title2, design: .monospaced).weight(.bold))
+                .tracking(6)
+                .foregroundStyle(.secondary)
+        }
+        .foregroundStyle(correct ? Color.green : Color.red)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(correct ? "Correcto" : "Era") \(String(character))")
     }
 }
 
@@ -230,18 +311,23 @@ struct LessonSummaryView: View {
     var body: some View {
         VStack(spacing: 18) {
             Spacer()
-            Image(systemName: summary.mastered ? "checkmark.seal.fill" : "arrow.counterclockwise.circle")
+            Image(systemName: headline.symbol)
                 .font(.system(size: 64))
-                .foregroundStyle(summary.mastered ? Color.green : Color.orange)
-                .symbolEffect(.bounce, value: summary.mastered)
+                .foregroundStyle(headline.tint)
+                .symbolEffect(.bounce, value: summary.itemsCorrect)
 
-            Text(summary.mastered ? "Nivel superado" : "Casi. Otra pasada.")
+            Text(headline.title)
                 .font(.title.weight(.bold))
+                .multilineTextAlignment(.center)
 
             HStack(spacing: 28) {
-                stat("Precisión", "\(Int(summary.accuracy * 100))%")
-                stat("Cobre", "\(summary.copperEarned)")
-                stat("Corazones", "\(summary.heartsRemaining)")
+                ForEach(stats, id: \.title) { stat in
+                    VStack(spacing: 4) {
+                        Text(stat.value).font(.title2.weight(.bold).monospacedDigit())
+                        Text(stat.title).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
             }
             .padding(.vertical, 8)
 
@@ -250,12 +336,13 @@ struct LessonSummaryView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             }
 
             Spacer()
 
             Button(action: onContinue) {
-                Text(summary.mastered ? "Continuar" : "Reintentar")
+                Text(summary.mastered ? "Continuar" : "Volver")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .frame(height: 54)
@@ -268,12 +355,39 @@ struct LessonSummaryView: View {
         }
     }
 
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(spacing: 4) {
-            Text(value).font(.title2.weight(.bold).monospacedDigit())
-            Text(title).font(.caption).foregroundStyle(.secondary)
+    private var headline: (symbol: String, title: String, tint: Color) {
+        switch summary.mode {
+        case .level:
+            return summary.mastered
+                ? ("checkmark.seal.fill", "Nivel superado", .green)
+                : ("arrow.counterclockwise.circle", "Casi. Otra pasada.", .orange)
+        case .practice:
+            return ("infinity.circle.fill", "Sesión de práctica", .accentColor)
+        case .timeAttack:
+            return ("timer", "¡Tiempo!", .accentColor)
+        case .survival:
+            return ("flame.fill", "Hasta aquí llegaste", .orange)
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    /// Cada modo se mide por lo suyo. Enseñar «precisión» en contrarreloj o
+    /// «corazones» en práctica libre sería ruido: no es lo que el jugador
+    /// estaba intentando hacer.
+    private var stats: [(title: String, value: String)] {
+        let accuracy = ("Precisión", "\(Int(summary.accuracy * 100))%")
+        let copper = ("Cobre", "\(summary.copperEarned)")
+        switch summary.mode {
+        case .level:
+            return [accuracy, copper, ("Corazones", "\(summary.heartsRemaining)")]
+        case .practice:
+            return [("Ítems", "\(summary.itemsTotal)"), accuracy, copper]
+        case .timeAttack:
+            return [("Aciertos", "\(summary.itemsCorrect)"), accuracy, copper]
+        case .survival:
+            return [("Aciertos", "\(summary.itemsCorrect)"),
+                    ("Velocidad", "\(Int(summary.topEffectiveWPM)) WPM"),
+                    copper]
+        }
     }
 }
 
@@ -313,10 +427,16 @@ struct OutOfHeartsView: View {
 
 // MARK: - Previews
 
-#Preview("Recepción") {
+#Preview("Campaña") {
     LessonView(level: LevelPlan.levels[0], store: PersistenceStore(inMemory: true))
 }
 
-#Preview("Palabras") {
-    LessonView(level: LevelPlan.levels[4], store: PersistenceStore(inMemory: true))
+#Preview("Contrarreloj") {
+    LessonView(session: .timeAttack(alphabet: Array("ETANIMSO"), timing: .comfortable),
+               store: PersistenceStore(inMemory: true))
+}
+
+#Preview("Supervivencia") {
+    LessonView(session: .survival(alphabet: Array("ETANIMSO"), timing: .comfortable),
+               store: PersistenceStore(inMemory: true))
 }

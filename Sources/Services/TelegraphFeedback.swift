@@ -5,6 +5,10 @@ import UIKit
 
 @MainActor
 protocol TelegraphFeedbackProviding: AnyObject {
+    var isAudioEnabled: Bool { get set }
+    var isHapticsEnabled: Bool { get set }
+    var toneFrequency: Double { get set }
+
     func keyDown()
     /// El toque ya cuenta como raya: micro-impacto que lo confirma sin mirar.
     func dahArmed()

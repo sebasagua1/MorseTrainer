@@ -10,8 +10,10 @@ struct PersistenceStoreTests {
         PersistenceStore(inMemory: true)
     }
 
-    private func summary(levelID: Int = 1, mastered: Bool = false, copper: Int = 0) -> LessonSummary {
-        LessonSummary(levelID: levelID, accuracy: 1, heartsRemaining: 3,
+    private func summary(levelID: Int = 1, mastered: Bool = false, copper: Int = 0,
+                         mode: GameSession.Mode = .level) -> LessonSummary {
+        LessonSummary(mode: mode, levelID: levelID, itemsCorrect: 1, itemsTotal: 1,
+                      topEffectiveWPM: 10, accuracy: 1, heartsRemaining: 3,
                       copperEarned: copper, mastered: mastered,
                       medianResponseTime: 1, weakSpots: [])
     }
@@ -246,6 +248,20 @@ struct PersistenceStoreTests {
         #expect(store.copper == 30)
         #expect(store.spend(copper: 30) == true)
         #expect(store.copper == 0)
+    }
+
+    @Test("Un modo libre suma cobre y estadísticas pero no desbloquea nada")
+    func freeModesDoNotUnlock() {
+        let store = makeStore()
+        var scheduler = DrillScheduler(alphabet: ["E", "T"])
+        for _ in 0..<8 { scheduler.record(shown: "E", answered: "E", responseTime: 1) }
+        store.merge(summary: summary(levelID: 0, mastered: false, copper: 14, mode: .timeAttack),
+                    stats: scheduler.stats, confusions: [:],
+                    seededStats: [:], seededConfusions: [:])
+
+        #expect(store.copper == 14)
+        #expect(store.highestUnlockedLevel == 1)
+        #expect(record(store, symbol: "E")?.attempts == 8)
     }
 
     @Test("Las letras flojas se ordenan por precisión y exigen muestra mínima")

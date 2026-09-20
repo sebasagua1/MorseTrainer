@@ -86,6 +86,26 @@ private struct ShakeModifier: ViewModifier {
     }
 }
 
+// MARK: - Cuenta atrás
+
+struct CountdownBadge: View {
+    let secondsRemaining: TimeInterval
+
+    private var isUrgent: Bool { secondsRemaining <= 10 }
+
+    var body: some View {
+        Text(String(format: "%d:%02d",
+                    Int(secondsRemaining) / 60,
+                    Int(secondsRemaining.rounded(.up)) % 60))
+            .font(.headline.monospacedDigit())
+            // El color no viaja solo: en los últimos diez segundos el texto
+            // también engorda, para quien no distingue el rojo.
+            .fontWeight(isUrgent ? .heavy : .semibold)
+            .foregroundStyle(isUrgent ? Color.red : .primary)
+            .accessibilityLabel("\(Int(secondsRemaining)) segundos restantes")
+    }
+}
+
 // MARK: - Veredicto
 
 struct JudgeBanner: View {

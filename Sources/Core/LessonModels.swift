@@ -25,7 +25,13 @@ struct WeakSpot: Equatable, Sendable {
 }
 
 struct LessonSummary: Equatable, Sendable {
+    let mode: GameSession.Mode
+    /// Nivel de campaña; 0 en los modos libres, que no desbloquean nada.
     let levelID: Int
+    let itemsCorrect: Int
+    let itemsTotal: Int
+    /// Velocidad efectiva alcanzada. Solo cambia en supervivencia.
+    let topEffectiveWPM: Double
     let accuracy: Double
     let heartsRemaining: Int
     let copperEarned: Int
