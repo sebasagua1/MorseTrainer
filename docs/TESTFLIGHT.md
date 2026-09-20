@@ -79,6 +79,15 @@ esta app no se han ejecutado nunca en hardware**, porque el simulador no puede:
 3. **El tono.** Que la rampa de 5 ms elimine de verdad el clic de conmutación a
    20 WPM solo se juzga con auriculares.
 
+## Solo iPhone
+
+El proyecto declara `TARGETED_DEVICE_FAMILY = "1"`. Apple rechaza un binario
+que diga soportar iPad y solo declare orientación vertical: el iPad exige las
+cuatro orientaciones por la multitarea. Añadirlas significaría diseñar y probar
+un layout apaisado que no existe — y el iPad no tiene Taptic Engine, que es la
+mitad de esta app. Si algún día se quiere iPad, el trabajo es de diseño, no de
+Info.plist.
+
 ## Lo que preguntará App Store Connect
 
 - **Cifrado:** ya resuelto con `ITSAppUsesNonExemptEncryption = NO`. Sin esa
