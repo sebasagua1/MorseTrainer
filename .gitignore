@@ -1,0 +1,24 @@
+# Artefactos de compilación
+build/
+DerivedData/
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.hmap
+*.moved-aside
+
+# Estado local de Xcode (posición de ventanas, breakpoints, esquemas propios).
+# Los esquemas compartidos SÍ se versionan: viven en
+# MorseTrainer.xcodeproj/xcshareddata/ y son los que usa `xcodebuild test`.
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
