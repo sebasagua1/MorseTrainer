@@ -97,7 +97,7 @@ Sources/
 └── Features/    ViewModels (@MainActor) y vistas.
                  Telegraph/ · Lesson/
 App/             Punto de entrada y mapa de progresión.
-Tests/           89 tests en 10 suites (Swift Testing).
+Tests/           112 tests en 13 suites (Swift Testing).
 ```
 
 `ARCHITECTURE.md` entra en el detalle de capas, persistencia y accesibilidad.
@@ -118,10 +118,27 @@ xcodebuild test -project MorseTrainer.xcodeproj -scheme MorseTrainer -destinatio
 Añadir un `.swift` dentro de `Sources/`, `App/` o `Tests/` lo incorpora al
 target automáticamente: no hay que tocar el `project.pbxproj`.
 
+## Tienda
+
+El cobre se gasta en cuatro temas y tres bancos de sonido. Un banco no cambia
+solo la frecuencia —eso sería el mismo pitido más agudo— sino el **timbre**, por
+síntesis aditiva: la onda senoidal es el fundamental solo, la radio militar
+añade armónicos impares suaves y el banco de 8 bits aproxima una cuadrada.
+
+Los ajustes mandan sobre el cosmético: si eliges una frecuencia a mano, gana a
+la del banco. Un objeto comprado no puede dejarte sin oír el juego.
+
 ## Versionado del esquema
 
 Los modelos de SwiftData viven dentro de `MorseSchemaV1`, no sueltos en el
-módulo, y el contenedor se abre a través de `MorseMigrationPlan`. Con una sola
+módulo, y el contenedor se abre a través de `MorseMigrationPlan`.
+
+⚠️ Al añadir la tienda se intentó un `MorseSchemaV2` con las clases duplicadas,
+que es el patrón de manual. No funciona dentro de un mismo módulo: ambas
+versiones generan la entidad `PlayerProfile`, SwiftData resuelve la clase por
+nombre de entidad, elige la que no toca y la app revienta al leer. Ese precio
+solo merece pagarse para cambios **destructivos**; los aditivos con valor por
+defecto los migra SwiftData solo, y así se hizo. Con una sola
 versión el plan está vacío, y eso es justo lo que se quiere: añadir la V2 será
 editar dos arrays en `Sources/Services/MorseSchema.swift`, en vez de reescribir
 la construcción del contenedor con usuarios ya instalados.
@@ -158,8 +175,6 @@ Lo que falta antes de que esto sea una app publicable:
 
 - **Háptica y linterna sin probar en hardware.** El simulador no tiene Taptic
   Engine ni flash, así que esas rutas solo están verificadas a nivel de código.
-- **Sin tienda ni cosméticos.** El cobre se gana y se acumula, pero todavía no
-  se gasta en nada.
 - **Sin récords por modo.** Contrarreloj y supervivencia no guardan tu mejor
   marca todavía, que es justo lo que los hace volver a jugarse.
 - **Sin licencia.** Sin un archivo `LICENSE`, el código es «todos los derechos

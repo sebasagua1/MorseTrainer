@@ -4,13 +4,22 @@ import SwiftData
 // MARK: - Versión 1
 
 /// Los modelos viven **dentro** de la versión del esquema, no sueltos en el
-/// módulo. Es lo que permite que V1 y V2 coexistan en el binario: cuando llegue
-/// un cambio, `MorseSchemaV2` tendrá su propia copia de las clases y la etapa de
-/// migración podrá leer una y escribir la otra. Con los modelos en el ámbito
-/// global solo puede existir una forma a la vez, y entonces migrar es imposible.
+/// módulo: es lo que permitirá que dos versiones coexistan el día que haga
+/// falta una migración de verdad.
+///
+/// ⚠️ Cuidado al crear esa segunda versión. Duplicar las clases en un
+/// `MorseSchemaV2` dentro del mismo módulo hace que ambas generen la entidad
+/// `PlayerProfile`; SwiftData resuelve la clase por nombre de entidad, elige la
+/// que no toca y revienta al leer:
+///
+///     Fatal error: Failed to cast model MorseSchemaV2.PlayerProfile …
+///
+/// Solo merece la pena pagar ese precio para cambios **destructivos**
+/// (renombrar, cambiar de tipo, repartir datos). Añadir propiedades con valor
+/// por defecto, como hizo la tienda, es aditivo y SwiftData lo migra solo.
 enum MorseSchemaV1: VersionedSchema {
 
-    static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
+    static var versionIdentifier: Schema.Version { Schema.Version(1, 1, 0) }
 
     static var models: [any PersistentModel.Type] {
         [PlayerProfile.self, LetterRecord.self, ConfusionRecord.self, SessionRecord.self]
@@ -25,6 +34,13 @@ enum MorseSchemaV1: VersionedSchema {
         var lastPlayedDay: Date?
         var totalDrills: Int = 0
         var createdAt: Date = Date()
+
+        // Tienda. Con valor por defecto: así SwiftData migra los almacenes ya
+        // instalados sin plan explícito — un cambio aditivo es ligero por
+        // definición y los perfiles existentes arrancan sin nada comprado.
+        var ownedCosmetics: [String] = []
+        var selectedThemeID: String = ""
+        var selectedSoundBankID: String = ""
 
         @Relationship(deleteRule: .cascade, inverse: \LetterRecord.profile)
         var letters: [LetterRecord] = []
@@ -85,8 +101,8 @@ enum MorseSchemaV1: VersionedSchema {
 
 // MARK: - Versión actual
 
-/// El resto de la app usa estos nombres y nunca `MorseSchemaV1.…`. Al publicar
-/// una V2, estos alias se mueven y no hay que tocar ni una línea fuera de aquí.
+/// El resto de la app usa estos nombres y nunca `MorseSchemaV2.…`. Al publicar
+/// una V3, estos alias se mueven y no hay que tocar ni una línea fuera de aquí.
 typealias PlayerProfile = MorseSchemaV1.PlayerProfile
 typealias LetterRecord = MorseSchemaV1.LetterRecord
 typealias ConfusionRecord = MorseSchemaV1.ConfusionRecord

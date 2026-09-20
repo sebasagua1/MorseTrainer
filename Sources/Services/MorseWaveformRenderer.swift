@@ -13,9 +13,11 @@ enum MorseWaveformRenderer {
 
     static func render(events: [MorseEvent],
                        sampleRate: Double,
-                       frequency: Double = 600,
+                       bank: SoundBank = .sine,
+                       frequency: Double? = nil,
                        amplitude: Float = 0.25,
                        rampDuration: Double = 0.005) -> AVAudioPCMBuffer? {
+        let frequency = frequency ?? bank.frequency
 
         let totalDuration = events.reduce(0) { $0 + $1.duration }
         guard totalDuration > 0,
@@ -54,7 +56,7 @@ enum MorseWaveformRenderer {
                         let remaining = max(0, length - frame)
                         envelope = 0.5 * (1 - cos(.pi * Double(remaining) / Double(rampFrames)))
                     }
-                    channel[cursor] = Float(sin(phase) * envelope) * amplitude
+                    channel[cursor] = Float(bank.sample(phase: phase) * envelope) * amplitude
                     phase += increment
                     if phase > 2 * .pi { phase -= 2 * .pi }
                 } else {

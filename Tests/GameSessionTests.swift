@@ -128,7 +128,20 @@ struct GameSettingsTests {
         #expect(sut.audioEnabled)
         #expect(sut.hapticsEnabled)
         #expect(!sut.torchEnabled)
-        #expect(sut.toneFrequency == 600)
+        // 0 = automática: la frecuencia la pone el banco de sonido.
+        #expect(sut.toneFrequency == 0)
+        #expect(sut.frequency(for: .sine) == SoundBank.sine.frequency)
+    }
+
+    /// El ajuste manda sobre el cosmético: un banco comprado no puede dejarte
+    /// con una frecuencia que no oigas.
+    @Test("Una frecuencia elegida a mano gana al banco")
+    func manualFrequencyWins() {
+        let sut = settings()
+        sut.toneFrequency = 440
+        #expect(sut.frequency(for: .eightBit) == 440)
+        sut.toneFrequency = 0
+        #expect(sut.frequency(for: .eightBit) == SoundBank.eightBit.frequency)
     }
 
     @Test("Los canales reflejan los interruptores")
@@ -169,8 +182,10 @@ struct GameSettingsTests {
 
     @Test("Todas las frecuencias ofrecidas son audibles y distintas")
     func toneChoicesAreSane() {
-        #expect(GameSettings.toneChoices.allSatisfy { $0 >= 300 && $0 <= 1200 })
+        let manual = GameSettings.toneChoices.filter { $0 > 0 }
+        #expect(manual.allSatisfy { $0 >= 300 && $0 <= 1200 })
         #expect(Set(GameSettings.toneChoices).count == GameSettings.toneChoices.count)
-        #expect(GameSettings.toneChoices.contains(600))
+        #expect(GameSettings.toneChoices.contains(0))    // automática
+        #expect(manual.contains(600))
     }
 }

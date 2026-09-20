@@ -8,6 +8,7 @@ protocol TelegraphFeedbackProviding: AnyObject {
     var isAudioEnabled: Bool { get set }
     var isHapticsEnabled: Bool { get set }
     var toneFrequency: Double { get set }
+    var soundBank: SoundBank { get set }
 
     func keyDown()
     /// El toque ya cuenta como raya: micro-impacto que lo confirma sin mirar.
@@ -23,7 +24,8 @@ private final class ToneState: @unchecked Sendable {
     var phase: Double = 0
     var gain: Double = 0
     var targetGain: Double = 0
-    var frequency: Double = 600      // Hz; el banco de sonidos lo cambia
+    var frequency: Double = 600      // Hz
+    var bank: SoundBank = .sine      // timbre
     var rampCoefficient: Double = 0  // se calcula con el sample rate
 }
 
@@ -39,6 +41,11 @@ final class Sidetone {
         set { state.frequency = newValue }
     }
 
+    var bank: SoundBank {
+        get { state.bank }
+        set { state.bank = newValue }
+    }
+
     init() {
         // `mainMixerNode` (y no `outputNode`) da un formato válido ya al
         // construir el grafo; leer el del outputNode aquí puede devolver 0 Hz.
@@ -52,7 +59,8 @@ final class Sidetone {
             let increment = 2 * Double.pi * toneState.frequency / sampleRate
             for frame in 0..<Int(frameCount) {
                 toneState.gain += (toneState.targetGain - toneState.gain) * toneState.rampCoefficient
-                let sample = Float(sin(toneState.phase) * toneState.gain * 0.25)
+                let sample = Float(toneState.bank.sample(phase: toneState.phase)
+                                   * toneState.gain * 0.25)
                 toneState.phase += increment
                 if toneState.phase > 2 * .pi { toneState.phase -= 2 * .pi }
                 for buffer in buffers {
@@ -101,6 +109,10 @@ final class TelegraphFeedback: TelegraphFeedbackProviding {
     var toneFrequency: Double {
         get { sidetone.frequency }
         set { sidetone.frequency = newValue }
+    }
+    var soundBank: SoundBank {
+        get { sidetone.bank }
+        set { sidetone.bank = newValue }
     }
 
     init() {

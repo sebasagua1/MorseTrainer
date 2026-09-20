@@ -50,6 +50,8 @@ final class LessonViewModel: ObservableObject {
     var level: Level? { session.level }
     /// Velocidad actual: en supervivencia sube durante la partida.
     private(set) var timing: FarnsworthTiming
+    /// Tema puesto por el jugador, para teñir la partida.
+    var theme: Theme { store?.selectedTheme ?? .classic }
     /// Expuesto para Ajustes (canales, frecuencia del tono). Para el estado
     /// en vivo, la vista usa `isKeyed` / `isTransmitting` de este mismo VM.
     let transmitter: MorseTransmitter
@@ -121,9 +123,11 @@ final class LessonViewModel: ObservableObject {
     func start() {
         // Los ajustes se aplican al arrancar, no al construir: el jugador
         // puede cambiarlos entre partidas sin recrear nada.
+        let bank = store?.selectedSoundBank ?? .sine
         transmitter.channels = settings.channels
-        transmitter.toneFrequency = settings.toneFrequency
-        keyModel.apply(settings)
+        transmitter.soundBank = bank
+        transmitter.toneFrequency = settings.frequency(for: bank)
+        keyModel.apply(settings, bank: bank)
         transmitter.prepare()
         hearts = session.hearts ?? 0
         timing = session.timing

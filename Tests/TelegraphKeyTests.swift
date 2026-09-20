@@ -8,6 +8,7 @@ final class SilentFeedback: TelegraphFeedbackProviding {
     var isAudioEnabled = true
     var isHapticsEnabled = true
     var toneFrequency: Double = 600
+    var soundBank: SoundBank = .sine
     private(set) var downs = 0
     private(set) var ups = 0
     func keyDown() { downs += 1 }

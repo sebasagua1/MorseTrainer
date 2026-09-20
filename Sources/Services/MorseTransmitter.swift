@@ -37,6 +37,7 @@ final class MorseTransmitter: ObservableObject {
 
     var channels: TransmissionChannels = .default
     var toneFrequency: Double = 600
+    var soundBank: SoundBank = .sine
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -145,6 +146,7 @@ final class MorseTransmitter: ObservableObject {
         guard let renderFormat,
               let buffer = MorseWaveformRenderer.render(events: events,
                                                         sampleRate: renderFormat.sampleRate,
+                                                        bank: soundBank,
                                                         frequency: toneFrequency),
               // Cinturón además de tirantes: si alguna vez divergen, se salta
               // el audio en lugar de abortar el proceso.

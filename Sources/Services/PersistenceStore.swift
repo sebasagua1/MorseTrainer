@@ -217,6 +217,59 @@ final class PersistenceStore {
         return true
     }
 
+    // MARK: Tienda
+
+    /// Lo gratuito cuenta como comprado siempre: no se puede perder ni hay que
+    /// migrar nada al añadir un cosmético gratis nuevo.
+    var ownedCosmetics: Set<String> {
+        Set(profile().ownedCosmetics).union(CosmeticCatalog.freeIDs)
+    }
+
+    func owns(_ id: String) -> Bool { ownedCosmetics.contains(id) }
+
+    var selectedTheme: Theme {
+        let id = profile().selectedThemeID
+        // Si el tema puesto ya no existe o no está comprado, se cae al gratuito
+        // en vez de dejar la app con un cosmético fantasma.
+        guard !id.isEmpty, owns(id) else { return .classic }
+        return Theme.theme(id: id)
+    }
+
+    var selectedSoundBank: SoundBank {
+        let id = profile().selectedSoundBankID
+        guard !id.isEmpty, owns(id) else { return .sine }
+        return SoundBank.bank(id: id)
+    }
+
+    /// Compra. Devuelve `false` si no hay cobre o ya se tenía, sin cobrar nada.
+    @discardableResult
+    func buy(_ id: String) -> Bool {
+        guard let price = CosmeticCatalog.price(of: id) else { return false }
+        let profile = profile()
+        guard !owns(id), profile.copper >= price else { return false }
+        profile.copper -= price
+        profile.ownedCosmetics.append(id)
+        save()
+        return true
+    }
+
+    /// Poner un cosmético. No hace nada si no se tiene: la interfaz lo impide,
+    /// pero el modelo no debería fiarse de la interfaz.
+    @discardableResult
+    func select(_ id: String) -> Bool {
+        guard owns(id) else { return false }
+        let profile = profile()
+        if Theme.all.contains(where: { $0.id == id }) {
+            profile.selectedThemeID = id
+        } else if SoundBank.all.contains(where: { $0.id == id }) {
+            profile.selectedSoundBankID = id
+        } else {
+            return false
+        }
+        save()
+        return true
+    }
+
     /// Letras con peor precisión histórica, para la pantalla de perfil.
     func weakestLetters(limit: Int = 5) -> [LetterRecord] {
         profile().letters

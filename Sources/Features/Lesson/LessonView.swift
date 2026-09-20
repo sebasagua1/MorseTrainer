@@ -3,7 +3,9 @@ import SwiftUI
 struct LessonView: View {
     @StateObject private var model: LessonViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @Environment(\.dismiss) private var dismiss
+    private var theme: Theme { model.theme }
 
     /// Se llama al superar el nivel, para que el mapa desbloquee el siguiente.
     var onFinish: (LessonSummary) -> Void = { _ in }
@@ -48,6 +50,7 @@ struct LessonView: View {
             .animation(.easeInOut(duration: 0.25), value: model.phase)
         }
         .background(Color(.systemBackground))
+        .tint(theme.accent(scheme))
         .shake(on: model.shakeTrigger, reduceMotion: reduceMotion)
         // Borde rojo en el fallo: es el canal que sobrevive a "Reducir movimiento".
         .overlay(

@@ -9,6 +9,10 @@ struct HomeView: View {
     @State private var streak = 0
     @State private var freeSession: GameSession?
     @State private var showingSettings = false
+    @State private var showingShop = false
+    @State private var showingOnboarding = false
+    @State private var theme = Theme.classic
+    @Environment(\.colorScheme) private var scheme
 
     private var alphabet: [Character] { GameSession.unlockedAlphabet(upTo: highestUnlocked) }
     private var timing: FarnsworthTiming { GameSession.startingTiming(forUnlockedLevel: highestUnlocked) }
@@ -59,18 +63,32 @@ struct HomeView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView(settings: settings)
         }
+        .sheet(isPresented: $showingShop, onDismiss: refresh) {
+            ShopView(store: store)
+                .tint(theme.accent(scheme))
+        }
+        .fullScreenCover(isPresented: $showingOnboarding) {
+            OnboardingView(settings: settings) { showingOnboarding = false }
+        }
         .fullScreenCover(item: $freeSession, onDismiss: refresh) { session in
             LessonView(session: session, store: store, settings: settings)
         }
-        .onAppear(perform: refresh)
+        .tint(theme.accent(scheme))
+        .onAppear {
+            refresh()
+            if !settings.hasSeenOnboarding { showingOnboarding = true }
+        }
     }
 
     private var header: some View {
         HStack(spacing: 12) {
             StatChip(symbol: "flame.fill", value: "\(streak)", tint: .orange,
                      label: "Racha de \(streak) días")
-            StatChip(symbol: "circle.hexagongrid.fill", value: "\(copper)", tint: .orange,
-                     label: "\(copper) de cobre")
+            Button { showingShop = true } label: {
+                StatChip(symbol: "circle.hexagongrid.fill", value: "\(copper)", tint: .orange,
+                         label: "\(copper) de cobre. Abre la tienda")
+            }
+            .buttonStyle(PressableCard())
             Spacer()
         }
         .padding(.top, 4)
@@ -89,6 +107,7 @@ struct HomeView: View {
         highestUnlocked = store.highestUnlockedLevel
         copper = store.copper
         streak = store.streakDays
+        theme = store.selectedTheme
     }
 }
 

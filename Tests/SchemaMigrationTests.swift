@@ -7,9 +7,9 @@ import Testing
 @MainActor
 struct SchemaMigrationTests {
 
-    @Test("La versión actual es la 1.0.0")
+    @Test("La versión actual está declarada")
     func versionIdentifier() {
-        #expect(MorseSchemaV1.versionIdentifier == Schema.Version(1, 0, 0))
+        #expect(MorseSchemaV1.versionIdentifier == Schema.Version(1, 1, 0))
     }
 
     @Test("El esquema declara las cuatro entidades")

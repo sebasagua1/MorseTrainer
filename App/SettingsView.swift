@@ -26,14 +26,14 @@ struct SettingsView: View {
                 Section {
                     Picker("Frecuencia", selection: $settings.toneFrequency) {
                         ForEach(GameSettings.toneChoices, id: \.self) { hertz in
-                            Text("\(Int(hertz)) Hz").tag(hertz)
+                            Text(hertz == 0 ? "Automática" : "\(Int(hertz)) Hz").tag(hertz)
                         }
                     }
                     .disabled(!settings.audioEnabled)
                 } header: {
                     Text("Tono")
                 } footer: {
-                    Text("600 Hz es el estándar en radioafición. Cambiarlo ayuda si tienes pérdida auditiva en alguna frecuencia.")
+                    Text("En automática manda el banco de sonido que tengas puesto. Elegirla a mano ayuda si tienes pérdida auditiva en alguna frecuencia, y entonces el ajuste gana al cosmético.")
                 }
 
                 Section {

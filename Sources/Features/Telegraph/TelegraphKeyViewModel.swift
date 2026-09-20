@@ -138,10 +138,11 @@ final class TelegraphKeyViewModel: ObservableObject {
     }
 
     /// Aplica las preferencias del jugador al manipulador.
-    func apply(_ settings: GameSettings) {
+    func apply(_ settings: GameSettings, bank: SoundBank = .sine) {
         feedback.isAudioEnabled = settings.audioEnabled
         feedback.isHapticsEnabled = settings.hapticsEnabled
-        feedback.toneFrequency = settings.toneFrequency
+        feedback.soundBank = bank
+        feedback.toneFrequency = settings.frequency(for: bank)
     }
 
     func reset() {
