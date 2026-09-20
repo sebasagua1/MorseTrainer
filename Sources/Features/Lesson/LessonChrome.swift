@@ -129,6 +129,15 @@ struct JudgeBanner: View {
 /// Destello sincronizado con la transmisión. Es la pista visual para jugar en
 /// silencio y el sustituto en pantalla de la linterna.
 struct CarrierIndicator: View {
+    /// Duración de la transición encendido/apagado del destello: ninguna.
+    ///
+    /// Tiene que ser cero, no "rápida". El hueco entre los elementos de un
+    /// carácter es de una unidad —60 ms a 20 WPM, 48 ms a 25— y cualquier
+    /// animación más larga que eso no llega a apagarse: las tres rayas de la O
+    /// se funden en un único destello indistinguible de una T. Quien juega en
+    /// silencio o con la linterna se queda sin poder leer la letra.
+    static let flashDuration: TimeInterval = 0
+
     let isKeyed: Bool
     let isPlaying: Bool
 
@@ -139,11 +148,12 @@ struct CarrierIndicator: View {
             .overlay(
                 Circle().stroke(Color.accentColor.opacity(isKeyed ? 0.45 : 0), lineWidth: 14)
                     .scaleEffect(isKeyed ? 1.45 : 1)
+                    .animation(nil, value: isKeyed)
             )
             .shadow(color: .accentColor.opacity(isKeyed ? 0.6 : 0), radius: 26)
             // Sin animación en el encendido: el destello debe caer justo con el
             // audio. Animarlo introduciría un retardo perceptible de ~100 ms.
-            .animation(.easeOut(duration: 0.08), value: isKeyed)
+            .animation(nil, value: isKeyed)
             .opacity(isPlaying ? 1 : 0.5)
             .accessibilityHidden(true)
     }

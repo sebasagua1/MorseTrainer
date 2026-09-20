@@ -18,6 +18,9 @@ final class TelegraphKeyViewModel: ObservableObject {
     /// El toque ya lleva suficiente tiempo como para contar como raya.
     /// La vista lo usa para cambiar el glifo del botón en vivo (`·` → `−`).
     @Published private(set) var willBeDah = false
+    /// Hay un carácter en el buffer esperando a cerrarse. La vista dibuja la
+    /// cuenta atrás para que el jugador vea que aún puede seguir tecleando.
+    @Published private(set) var isAwaitingCommit = false
 
     // MARK: Callbacks
 
@@ -29,9 +32,18 @@ final class TelegraphKeyViewModel: ObservableObject {
     // MARK: Configuración
 
     var timing: FarnsworthTiming
-    /// Silencio que cierra un carácter. En entrada se es más indulgente que en
-    /// recepción: el jugador es más lento que el generador.
-    var letterGap: TimeInterval { max(0.55, timing.interCharacterGap) }
+    /// Silencio que cierra un carácter.
+    ///
+    /// No se deriva de la velocidad del nivel. Eso daba 654 ms en el nivel de
+    /// la O, y quien acaba de aprender una letra de tres rayas duda más que eso
+    /// entre una y otra: el carácter se cerraba a mitad, se contaba como T y
+    /// costaba un corazón por haberlo hecho bien.
+    ///
+    /// Se calcula sobre el pulso del propio jugador —`ditDahThreshold` ya está
+    /// calibrado con sus puntos— con un suelo generoso. La contrapartida es que
+    /// la letra tarda en confirmarse, así que la tecla lo muestra con un anillo
+    /// que se vacía: el tiempo de espera deja de ser invisible.
+    var letterGap: TimeInterval { max(0.9, 4 * ditDahThreshold) }
     /// Seguro anti-bloqueo: si el gesto se cancela (llamada entrante, notificación)
     /// `onEnded` puede no llegar nunca. Pasado este tiempo cerramos como raya.
     private let watchdogTimeout: TimeInterval = 2.0
@@ -67,6 +79,7 @@ final class TelegraphKeyViewModel: ObservableObject {
         guard !isDown else { return }          // `onChanged` se repite: idempotente.
         isDown = true
         willBeDah = false
+        isAwaitingCommit = false
         letterCommitTask?.cancel()
         letterCommitTask = nil
 
@@ -117,6 +130,7 @@ final class TelegraphKeyViewModel: ObservableObject {
         buffer.removeAll()
         isDown = false
         willBeDah = false
+        isAwaitingCommit = false
         feedback.keyUp()
     }
 
@@ -126,6 +140,7 @@ final class TelegraphKeyViewModel: ObservableObject {
     // MARK: - Privado
 
     private func scheduleLetterCommit() {
+        isAwaitingCommit = true
         letterCommitTask = Task { [letterGap] in
             try? await Task.sleep(for: .seconds(letterGap))
             guard !Task.isCancelled else { return }
@@ -134,6 +149,7 @@ final class TelegraphKeyViewModel: ObservableObject {
     }
 
     private func commitCharacter() {
+        isAwaitingCommit = false
         guard !buffer.isEmpty else { return }
         let code = MorseCode(buffer)
         buffer.removeAll()

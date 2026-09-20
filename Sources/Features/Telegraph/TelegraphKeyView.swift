@@ -8,6 +8,21 @@ struct TelegraphKeyView: View {
 
     var body: some View {
         ZStack {
+            // Anillo exterior: cuenta atrás hasta que el carácter se cierra.
+            // Sin esto el jugador no tiene forma de saber cuánto margen le
+            // queda para seguir tecleando, y una letra de tres elementos se
+            // convierte en adivinar cuándo hay prisa.
+            Circle()
+                .trim(from: 0, to: model.isAwaitingCommit ? 0 : 1)
+                .stroke(Color.secondary.opacity(0.35),
+                        style: .init(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: diameter + 44, height: diameter + 44)
+                .opacity(model.isAwaitingCommit ? 1 : 0)
+                // Animada solo al entrar en la espera; al salir, instantánea.
+                .animation(model.isAwaitingCommit ? .linear(duration: model.letterGap) : nil,
+                           value: model.isAwaitingCommit)
+
             // Anillo de progreso: se llena mientras el toque avanza hacia "raya".
             TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !model.isDown)) { _ in
                 Circle()
