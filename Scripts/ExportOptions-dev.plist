@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- "debugging" es el nombre nuevo de lo que Xcode llamaba "development".
+	     A diferencia del perfil de tienda, este lleva la lista de dispositivos
+	     registrados en el equipo, así que el .ipa se puede instalar en ellos. -->
+	<key>method</key>
+	<string>debugging</string>
+	<key>teamID</key>
+	<string>89RWP86552</string>
+	<key>destination</key>
+	<string>export</string>
+	<key>uploadSymbols</key>
+	<false/>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

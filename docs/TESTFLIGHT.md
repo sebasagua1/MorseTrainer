@@ -1,72 +1,87 @@
 # Publicar en TestFlight
 
-El proyecto ya está preparado: bundle ID real, icono, equipo de desarrollo y
-clave de cumplimiento de cifrado. Lo que queda son los pasos que exigen tu
-cuenta de Apple, y esos los ejecutas tú.
+Queda **un solo paso manual**. Todo lo demás está hecho y verificado.
 
 | | |
 |---|---|
 | Bundle ID | `com.sebasagua.MorseTrainer` |
 | Team ID | `89RWP86552` |
-| Versión | 1.0 |
-| Build | número de commits de `git`, lo fija `release.sh` |
+| Versión | 1.0 · build = número de commits |
+| App ID en el portal | ✅ registrado |
+| Certificado de distribución | ✅ creado y en el llavero que gestiona Xcode |
+| Perfil de tienda | ✅ `iOS Team Store Provisioning Profile: com.sebasagua.MorseTrainer` |
+| Icono y cumplimiento de cifrado | ✅ |
+| **Registro de la app en App Store Connect** | ❌ **pendiente** |
 
-## Una sola vez
+## El paso que falta
 
-**1. Registrar el identificador.** En [Certificates, Identifiers & Profiles](https://developer.apple.com/account/resources/identifiers/list)
-crea un App ID explícito con `com.sebasagua.MorseTrainer`. No necesita ninguna
-capability: la app no usa notificaciones, iCloud ni nada que haya que declarar.
+El registro de la app **no se puede automatizar**. La documentación de Apple lo
+dice explícitamente:
 
-**2. Crear el registro de la app.** En [App Store Connect](https://appstoreconnect.apple.com/apps)
-› **+** › Nueva app. Plataforma iOS, el bundle ID del paso anterior, y un SKU
-cualquiera (`morsetrainer` sirve). El nombre debe ser único en toda la App
-Store; si «MorseTrainer» está cogido, cualquier variante vale — el nombre
-visible se puede cambiar después.
+> Don't use this API to create new apps; instead, create new apps on the App
+> Store Connect website.
 
-**3. Localizar tu Issuer ID.** App Store Connect › **Usuarios y acceso** ›
-**Integraciones** › Claves de App Store Connect. Es el UUID que aparece arriba,
-sobre la lista de claves. Tu clave privada ya está instalada en esta máquina con
-Key ID `6WPTV22NBW`.
+En [App Store Connect](https://appstoreconnect.apple.com/apps) › **+** ›
+**Nueva app**:
 
-**4. El certificado de distribución no hay que crearlo a mano.** Ahora mismo
-solo tienes uno de desarrollo. El `-allowProvisioningUpdates` del guion lo pide
-a Apple y lo instala en el llavero la primera vez que archives con credenciales.
+- **Plataforma:** iOS
+- **Bundle ID:** `com.sebasagua.MorseTrainer` (ya aparece en el desplegable)
+- **Nombre:** debe ser único en toda la App Store. Si «MorseTrainer» está
+  cogido, cualquier variante sirve; el nombre visible se cambia después.
+- **SKU:** cualquiera, por ejemplo `morsetrainer`
+- **Idioma principal:** el que prefieras
 
-## Cada build
+Dos minutos. No hay que tocar precios, capturas ni ficha de la App Store: nada
+de eso hace falta para repartir por TestFlight.
+
+## Subir
 
 ```bash
-ASC_KEY_ID=6WPTV22NBW ASC_ISSUER_ID=<tu-issuer-id> ./Scripts/release.sh --upload
+./Scripts/release.sh --upload
 ```
 
-Sin `--upload` archiva y deja el `.ipa` en `build/export/` para inspeccionarlo
-antes de subir nada.
+Sin argumentos ni variables de entorno: usa la cuenta que Xcode ya tiene
+iniciada, que es la misma que registró el App ID y el certificado.
 
-El número de build sale de `git rev-list --count HEAD`. Siempre crece, nunca se
-repite —App Store Connect rechaza un build con un número ya usado para la misma
-versión— y permite rastrear cualquier build que un tester reporte hasta el
-commit exacto que lo generó.
+Si algún día lo necesitas desde CI, donde no hay sesión de Xcode, exporta
+`ASC_KEY_ID` y `ASC_ISSUER_ID` y el guion usará la clave de API en su lugar. Tu
+clave privada ya está instalada con Key ID `6WPTV22NBW`; el Issuer ID está en
+App Store Connect › Usuarios y acceso › Integraciones.
 
-Tras la subida, el procesado en App Store Connect tarda entre 5 y 30 minutos.
-Cuando termine, el build aparece en la pestaña **TestFlight** y se puede repartir
-a testers internos de inmediato. Los testers externos pasan por una revisión de
-Apple, normalmente de un día.
+Tras subir, el procesado tarda entre 5 y 30 minutos. Cuando termine, el build
+aparece en la pestaña **TestFlight** y se reparte a testers internos de
+inmediato. Los externos pasan por una revisión de Apple, normalmente de un día.
 
-## Qué avisará Apple
+## Probar en tu iPhone antes de repartir
 
-- **Cifrado.** Ya está resuelto: `ITSAppUsesNonExemptEncryption = NO` en el
-  Info.plist, porque la app no usa criptografía. Sin esa clave, App Store
-  Connect pregunta en cada build y bloquea el reparto hasta contestar.
-- **Privacidad.** La app no recoge datos: todo vive en el dispositivo y no hay
-  red. Aun así App Store Connect pide rellenar la ficha de privacidad — son dos
-  clics contestando «No» a la recogida de datos.
-- **Icono.** Resuelto. El de 1024×1024 se genera con `Scripts/make-icon.swift`.
+El `.ipa` de tienda **no se puede instalar en un dispositivo**: un perfil de
+tienda no lleva lista de dispositivos. Para eso está el modo de desarrollo:
 
-## Lo que conviene probar en el dispositivo antes de repartir
+```bash
+./Scripts/release.sh --dev
+```
 
-Tres cosas que el simulador no puede verificar y que esta app usa de lleno:
+Produce `build/export-dev/MorseTrainer.ipa`, firmado con tu certificado de
+desarrollo y autorizado en los 5 dispositivos registrados de tu equipo. Se
+instala arrastrándolo sobre el dispositivo en Xcode › Window › Devices and
+Simulators, o con:
 
-1. **La háptica.** El continuo de la raya frente al impacto del punto es la
-   mitad de la experiencia y nunca se ha ejecutado en un Taptic Engine real.
-2. **La linterna.** Ruta completa sin probar: el simulador no tiene flash.
+```bash
+xcrun devicectl device install app --device <UDID> build/export-dev/MorseTrainer.ipa
+```
+
+Vale la pena hacerlo antes de dar el build a nadie. **Tres cosas centrales de
+esta app no se han ejecutado nunca en hardware**, porque el simulador no puede:
+
+1. **La háptica.** El continuo de la raya frente al impacto seco del punto es
+   la mitad de la experiencia.
+2. **La linterna.** Ruta completa sin probar; el simulador no tiene flash.
 3. **El tono.** Que la rampa de 5 ms elimine de verdad el clic de conmutación a
-   20 WPM es algo que solo se juzga con auriculares.
+   20 WPM solo se juzga con auriculares.
+
+## Lo que preguntará App Store Connect
+
+- **Cifrado:** ya resuelto con `ITSAppUsesNonExemptEncryption = NO`. Sin esa
+  clave, pregunta en cada build y bloquea el reparto hasta contestar.
+- **Privacidad:** hay que rellenar la ficha. La app no recoge nada —todo vive
+  en el dispositivo y no hay red— así que son dos clics contestando «No».

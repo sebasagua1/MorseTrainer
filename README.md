@@ -122,12 +122,14 @@ icono generado por código en `Scripts/make-icon.swift`, equipo de desarrollo y
 declaración de cumplimiento de cifrado.
 
 ```bash
-./Scripts/release.sh            # archiva y exporta el .ipa
-./Scripts/release.sh --upload   # además lo sube a App Store Connect
+./Scripts/release.sh            # .ipa firmado para App Store Connect
+./Scripts/release.sh --dev      # .ipa instalable en los dispositivos del equipo
+./Scripts/release.sh --upload   # sube el build a TestFlight
 ```
 
-Los pasos que exigen una cuenta de Apple —registrar el identificador, crear el
-registro de la app y obtener el Issuer ID— están en
+El App ID, el certificado de distribución y el perfil de tienda ya están
+creados. Queda un paso manual —crear el registro de la app en App Store
+Connect, que Apple no permite automatizar— detallado en
 [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
 
 ## Estado
