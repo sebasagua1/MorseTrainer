@@ -98,13 +98,31 @@ Primera versión.
 | Campo | Valor |
 |---|---|
 | Categoría principal | Educación |
-| Categoría secundaria | Juegos → Educativos |
+| Categoría secundaria | Juegos → Palabras |
 | Clasificación por edad | 4+ |
 | Precio | Gratis |
 | Compras dentro de la app | Ninguna |
 | Copyright | 2026 Sebastian Villegas Olaya |
 | URL de soporte | https://sebasagua1.github.io/MorseTrainer/ |
 | URL de privacidad | https://sebasagua1.github.io/MorseTrainer/privacidad.html |
+
+> **Nota (20-09-2026).** La categoría «Juegos → Educativos» **ya no existe** en
+> el catálogo de Apple. Las subcategorías de Juegos son: Acción, Aventura,
+> Carreras, Cartas, Casino, Casual, Deportes, Estrategia, Familia, Mesa, Música,
+> Palabras, Puzles, Rol, Simulación y Trivia. Se eligió **Palabras** por ser la
+> que mejor describe un juego de reconocer caracteres. Se puede cambiar sin
+> pasar por revisión.
+
+## Otros campos que App Store Connect exige y no estaban aquí
+
+| Campo | Valor | Dónde |
+|---|---|---|
+| Derechos de contenido | No contiene contenido de terceros | Información de la app |
+| Disponibilidad | Los 175 países | Precios y disponibilidad |
+| País base del precio | Estados Unidos (USD), 0,00 | Precios y disponibilidad |
+| Publicación | **Manual**, no automática tras aprobar | Ficha de la versión |
+| Capturas | Solo el juego 6,9" (1320x2868); Apple lo reutiliza para 6,5" | Ficha de la versión |
+| Novedades | No aplica en una 1.0: la API lo rechaza | — |
 
 ## Sobre publicar solo en español
 
