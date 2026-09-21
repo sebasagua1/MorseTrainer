@@ -102,7 +102,7 @@ struct OnboardingView: View {
             VStack(spacing: 22) {
                 Spacer()
                 Image(systemName: page.symbol)
-                    .font(.system(size: 64, weight: .light))
+                    .displayFont(64, .light)
                     .foregroundStyle(Color.accentColor)
                     .symbolEffect(.variableColor, isActive: isPlaying)
 

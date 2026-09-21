@@ -49,7 +49,7 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 28)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(theme.palette(scheme).background)
             .navigationTitle("Morse")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -73,7 +73,7 @@ struct HomeView: View {
         .fullScreenCover(item: $freeSession, onDismiss: refresh) { session in
             LessonView(session: session, store: store, settings: settings)
         }
-        .tint(theme.accent(scheme))
+        .morseTheme(theme, scheme)
         .onAppear {
             refresh()
             if !settings.hasSeenOnboarding { showingOnboarding = true }
@@ -119,55 +119,122 @@ private struct StatChip: View {
     let tint: Color
     let label: String
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         Label(value, systemImage: symbol)
-            .font(.subheadline.weight(.semibold).monospacedDigit())
+            .font(.rounded(.subheadline, .bold).monospacedDigit())
             .foregroundStyle(tint)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(Color(.secondarySystemGroupedBackground)))
+            .padding(.horizontal, Space.md)
+            .padding(.vertical, Space.sm + 2)
+            .background(
+                Capsule()
+                    .fill(palette.surface)
+                    .overlay(Capsule().strokeBorder(palette.border, lineWidth: 1))
+            )
             .accessibilityLabel(label)
     }
 }
 
+/// La acción principal de la app. Antes pesaba visualmente lo mismo que los
+/// tres modos secundarios —cuatro rectángulos grises iguales— y no había forma
+/// de saber dónde tocar para seguir jugando. Ahora lleva el color del tema, la
+/// letra que toca aprender y su ritmo dibujado al fondo.
 private struct CampaignCard: View {
     let level: Level?
     let completed: Int
     let total: Int
 
+    @Environment(\.palette) private var palette
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var nextCode: MorseCode? {
+        guard let first = level?.newCharacters.first else { return nil }
+        return MorseAlphabet.code(for: first)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.md) {
             HStack {
                 Label(GameSession.Mode.level.title,
-                          systemImage: GameSession.Mode.level.symbol)
-                    .font(.headline)
-                Spacer()
+                      systemImage: GameSession.Mode.level.symbol)
+                    .font(.rounded(.subheadline, .bold))
+                    // A tamaños de accesibilidad "Campaña" se partía en dos
+                    // líneas y empujaba el contador fuera de sitio.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Spacer(minLength: Space.sm)
                 Text("\(completed)/\(total)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(.rounded(.subheadline, .bold).monospacedDigit())
             }
+            .foregroundStyle(palette.onAccent.opacity(0.85))
 
             if let level {
                 Text(level.title)
-                    .font(.title2.weight(.bold))
+                    .font(.rounded(.title, .bold))
+                    .foregroundStyle(palette.onAccent)
+
                 Text("Aprende \(level.newCharacters.map(String.init).joined(separator: " y "))  ·  \(Int(level.timing.characterWPM))/\(Int(level.timing.effectiveWPM)) WPM")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.onAccent.opacity(0.8))
             } else {
                 Text("Campaña completa")
-                    .font(.title2.weight(.bold))
+                    .font(.rounded(.title, .bold))
+                    .foregroundStyle(palette.onAccent)
             }
 
-            ProgressView(value: Double(completed), total: Double(total))
-                .tint(.accentColor)
+            // Progreso propio: el `ProgressView` del sistema se teñía del
+            // acento sobre el acento y desaparecía.
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(palette.onAccent.opacity(0.25))
+                    Capsule().fill(palette.onAccent)
+                        .frame(width: max(0, geo.size.width * progress))
+                }
+            }
+            .frame(height: 8)
+
+            HStack(spacing: Space.sm) {
+                Text(level == nil ? "Repasar" : "Continuar")
+                    .font(.rounded(.subheadline, .bold))
+                Image(systemName: "arrow.right")
+                    .font(.rounded(.footnote, .bold))
+            }
+            .foregroundStyle(palette.onAccent)
+            .padding(.top, Space.xs)
         }
-        .padding(18)
+        .padding(Space.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(Color(.secondarySystemGroupedBackground)))
+        .background {
+            RoundedRectangle(cornerRadius: Radius.xl, style: .continuous)
+                .fill(
+                    LinearGradient(colors: [palette.accent.lighter(0.12), palette.accent.darker(0.08)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing)
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    // El ritmo de la letra que toca, en grande y al fondo, como
+                    // una marca al pie. Es el motivo gráfico que la app nunca
+                    // había usado. Abajo a la derecha porque es la única zona
+                    // de la tarjeta sin texto: arriba se comía el título.
+                    // Con letra de accesibilidad el texto ocupa la tarjeta
+                    // entera: la decoración se aparta, que para eso es
+                    // decoración.
+                    if let nextCode, !typeSize.isAccessibilitySize {
+                        MorseGlyph(code: nextCode, unit: 15, tint: palette.onAccent.opacity(0.22))
+                            .padding(.trailing, Space.lg)
+                            .padding(.bottom, Space.lg)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Radius.xl, style: .continuous))
+                .shadow(color: palette.accent.opacity(0.35), radius: 18, y: 8)
+        }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityHint("Abre el mapa de niveles")
+    }
+
+    private var progress: Double {
+        total > 0 ? Double(completed) / Double(total) : 0
     }
 }
 
@@ -175,32 +242,41 @@ private struct ModeCard: View {
     let mode: GameSession.Mode
     let action: () -> Void
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Image(systemName: mode.symbol)
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(Color.accentColor.opacity(0.14)))
+                    .font(.rounded(.title3, .semibold))
+                    .foregroundStyle(palette.accent)
+                    .frame(width: 48, height: 48)
+                    .background(Circle().fill(palette.accent.opacity(0.14)))
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(mode.title).font(.headline)
+                VStack(alignment: .leading, spacing: Space.xs) {
+                    Text(mode.title).font(.rounded(.headline, .bold))
+                        .foregroundStyle(palette.textPrimary)
                     Text(mode.tagline)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(.rounded(.footnote, .bold))
+                    .foregroundStyle(palette.textSecondary)
             }
-            .padding(16)
+            .padding(Space.md)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground)))
+            .background(
+                RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                    .fill(palette.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                            .strokeBorder(palette.border, lineWidth: 1)
+                    )
+            )
         }
         .buttonStyle(PressableCard())
         .accessibilityElement(children: .combine)
@@ -208,18 +284,26 @@ private struct ModeCard: View {
 }
 
 private struct LockedModesNote: View {
+    @Environment(\.palette) private var palette
+
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "lock.fill").foregroundStyle(.secondary)
+        VStack(spacing: Space.sm) {
+            Image(systemName: "lock.fill").foregroundStyle(palette.textSecondary)
             Text("Supera el primer nivel para abrir los demás modos")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(palette.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous)
-            .fill(Color(.secondarySystemGroupedBackground)))
+        .padding(Space.lg)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                .fill(palette.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                        .strokeBorder(palette.border, style: .init(lineWidth: 1.5, dash: [6, 6]))
+                )
+        )
     }
 }
 

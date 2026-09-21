@@ -49,13 +49,13 @@ struct LessonView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(.easeInOut(duration: 0.25), value: model.phase)
         }
-        .background(Color(.systemBackground))
-        .tint(theme.accent(scheme))
+        .background(theme.palette(scheme).background)
+        .morseTheme(theme, scheme)
         .shake(on: model.shakeTrigger, reduceMotion: reduceMotion)
         // Borde rojo en el fallo: es el canal que sobrevive a "Reducir movimiento".
         .overlay(
             RoundedRectangle(cornerRadius: 0)
-                .strokeBorder(Color.red.opacity(isWrong ? 0.55 : 0), lineWidth: 5)
+                .strokeBorder(theme.palette(scheme).danger.opacity(isWrong ? 0.6 : 0), lineWidth: 5)
                 .ignoresSafeArea()
                 .animation(.easeOut(duration: 0.3), value: isWrong)
         )
@@ -74,8 +74,8 @@ struct LessonView: View {
         HStack(spacing: 14) {
             Button { model.exit(); dismiss() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.rounded(.headline, .semibold))
+                    .foregroundStyle(theme.palette(scheme).textSecondary)
                     .frame(width: 44, height: 44)      // objetivo táctil completo
             }
             .accessibilityLabel("Salir de la lección")
@@ -118,12 +118,14 @@ struct LessonView: View {
                     TransmissionDrillView(prompt: drill.prompt,
                                           subtitle: "Transmite esta letra",
                                           progress: nil,
-                                          keyModel: model.keyModel)
+                                          keyModel: model.keyModel,
+                                          theme: theme)
                 case .word:
                     TransmissionDrillView(prompt: drill.prompt,
                                           subtitle: "Transmite la palabra completa",
                                           progress: model.wordProgress,
-                                          keyModel: model.keyModel)
+                                          keyModel: model.keyModel,
+                                          theme: theme)
                 }
 
                 if case .judging(let correct) = model.phase, drill.kind != .reception {
@@ -152,6 +154,8 @@ struct ReceptionDrillView: View {
     let drill: Drill
     @ObservedObject var model: LessonViewModel
 
+    @Environment(\.palette) private var palette
+
     private var isAnswering: Bool {
         if case .awaitingAnswer = model.phase { return true }
         return false
@@ -163,13 +167,13 @@ struct ReceptionDrillView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Space.lg) {
             // El centro de la pantalla ya no es un hueco: lleva el estado, el
             // destello y, tras responder, la letra con su patrón. Antes el
             // jugador miraba 40 % de pantalla vacía sin saber si sonaba algo.
-            VStack(spacing: 18) {
+            VStack(spacing: Space.lg) {
                 Text(statusText)
-                    .font(.title3.weight(.semibold))
+                    .font(.rounded(.title3, .semibold))
                     .foregroundStyle(statusTint)
                     .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: statusText)
@@ -185,7 +189,10 @@ struct ReceptionDrillView: View {
                             .transition(.scale(scale: 0.85).combined(with: .opacity))
                     }
                 }
-                .frame(height: 150)
+                // 150 reservaba menos alto del que ocupa el indicador, así que
+                // el hueco sobrante se iba todo arriba y la señal quedaba baja
+                // y pequeña en medio de una pantalla vacía.
+                .frame(height: 220)
                 .animation(.spring(response: 0.3, dampingFraction: 0.75), value: revealedTarget)
             }
             .frame(maxHeight: .infinity)
@@ -194,10 +201,15 @@ struct ReceptionDrillView: View {
                 model.replay()
             } label: {
                 Label("Repetir", systemImage: "arrow.clockwise")
-                    .font(.callout.weight(.semibold))
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(Capsule().fill(Color(.secondarySystemBackground)))
+                    .font(.rounded(.callout, .semibold))
+                    .foregroundStyle(palette.textPrimary)
+                    .padding(.horizontal, Space.lg)
+                    .padding(.vertical, Space.sm + 4)
+                    .background(
+                        Capsule()
+                            .fill(palette.surfaceRaised)
+                            .overlay(Capsule().strokeBorder(palette.border, lineWidth: 1.5))
+                    )
             }
             .buttonStyle(.plain)
             .disabled(!isAnswering)
@@ -221,8 +233,8 @@ struct ReceptionDrillView: View {
     }
 
     private var statusTint: Color {
-        guard let correct = judgement else { return .primary }
-        return correct ? .green : .red
+        guard let correct = judgement else { return palette.textSecondary }
+        return correct ? palette.success : palette.danger
     }
 
     private var revealedTarget: Character? {
@@ -238,16 +250,15 @@ private struct RevealedAnswer: View {
     let pattern: String
     let correct: Bool
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Space.md) {
             Text(String(character))
-                .font(.system(size: 72, weight: .bold, design: .rounded))
-            Text(pattern)
-                .font(.system(.title2, design: .monospaced).weight(.bold))
-                .tracking(6)
-                .foregroundStyle(.secondary)
+                .displayFont(76)
+            MorseGlyph(code: MorseCode(pattern: pattern) ?? MorseCode([]), unit: 9)
         }
-        .foregroundStyle(correct ? Color.green : Color.red)
+        .foregroundStyle(correct ? palette.success : palette.danger)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(correct ? "Correcto" : "Era") \(String(character))")
     }
@@ -263,12 +274,16 @@ struct TransmissionDrillView: View {
     /// Se observa el manipulador directamente: es un objeto estable (se crea
     /// una vez y nunca se reemplaza), así que `@ObservedObject` es seguro aquí.
     @ObservedObject var keyModel: TelegraphKeyViewModel
+    var theme: Theme = .classic
+
+    @Environment(\.palette) private var palette
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: Space.lg) {
             Text(subtitle)
-                .font(.title3.weight(.semibold))
-                .padding(.top, 12)
+                .font(.rounded(.title3, .semibold))
+                .foregroundStyle(palette.textSecondary)
+                .padding(.top, Space.md)
 
             promptDisplay
                 .frame(maxHeight: .infinity)
@@ -277,9 +292,9 @@ struct TransmissionDrillView: View {
             MorseBufferStrip(symbols: keyModel.buffer)
                 .frame(height: 16)
 
-            TelegraphKeyView(model: keyModel)
-                .padding(.bottom, 28)
+            TelegraphKeyView(model: keyModel, theme: theme)
         }
+        .padding(.bottom, Space.lg)
     }
 
     @ViewBuilder
@@ -289,8 +304,8 @@ struct TransmissionDrillView: View {
                 ForEach(Array(prompt.enumerated()), id: \.offset) { index, character in
                     let done = index < progress.count
                     Text(String(character))
-                        .font(.system(size: 46, weight: .bold, design: .rounded))
-                        .foregroundStyle(done ? Color.green : .primary)
+                        .displayFont(48, .bold, relativeTo: .title)
+                        .foregroundStyle(done ? palette.success : palette.textPrimary)
                         .opacity(done ? 1 : (index == progress.count ? 1 : 0.35))
                         .scaleEffect(index == progress.count ? 1.12 : 1)
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: progress)
@@ -299,7 +314,7 @@ struct TransmissionDrillView: View {
             .accessibilityLabel("Palabra \(prompt), transmitidas \(progress.count) letras")
         } else {
             Text(prompt)
-                .font(.system(size: 92, weight: .bold, design: .rounded))
+                .displayFont(96)
                 .accessibilityLabel("Transmite la letra \(prompt)")
         }
     }
@@ -315,7 +330,7 @@ struct LessonSummaryView: View {
         VStack(spacing: 18) {
             Spacer()
             Image(systemName: headline.symbol)
-                .font(.system(size: 64))
+                .displayFont(64, .regular)
                 .foregroundStyle(headline.tint)
                 .symbolEffect(.bounce, value: summary.itemsCorrect)
 
@@ -395,6 +410,8 @@ struct LessonSummaryView: View {
 }
 
 struct OutOfHeartsView: View {
+    @Environment(\.palette) private var palette
+
     let onRetry: () -> Void
     let onExit: () -> Void
 
@@ -402,8 +419,8 @@ struct OutOfHeartsView: View {
         VStack(spacing: 18) {
             Spacer()
             Image(systemName: "heart.slash.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.red)
+                .displayFont(56, .regular)
+                .foregroundStyle(palette.danger)
             Text("Te has quedado sin corazones")
                 .font(.title2.weight(.bold))
             Text("El nivel se reinicia, pero lo que el motor aprendió sobre tus fallos se conserva.")

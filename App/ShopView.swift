@@ -55,7 +55,8 @@ struct ShopView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 18)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(store.selectedTheme.palette(scheme).background)
+            .morseTheme(store.selectedTheme, scheme)
             .navigationTitle("Tienda")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -223,7 +224,7 @@ private struct BankSwatch: View {
         ZStack {
             Circle().fill(Color.accentColor.opacity(0.14))
             Image(systemName: playing ? "speaker.wave.3.fill" : "waveform")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.rounded(.headline, .semibold))
                 .foregroundStyle(Color.accentColor)
                 .contentTransition(.symbolEffect(.replace))
         }

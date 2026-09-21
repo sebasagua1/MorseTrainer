@@ -6,17 +6,19 @@ struct HeartsBar: View {
     let remaining: Int
     let total: Int
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         HStack(spacing: 4) {
             // Array(0..<total): un Range dinámico en ForEach provoca avisos de
             // identidad inestable cuando `total` cambia entre niveles.
             ForEach(Array(0..<total), id: \.self) { index in
                 Image(systemName: index < remaining ? "heart.fill" : "heart")
-                    .foregroundStyle(index < remaining ? Color.red : Color.secondary.opacity(0.4))
+                    .foregroundStyle(index < remaining ? palette.danger : palette.border)
                     .symbolEffect(.bounce, value: remaining)
             }
         }
-        .font(.system(size: 17, weight: .semibold))
+        .font(.rounded(.headline, .semibold))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(remaining) de \(total) corazones")
     }
@@ -27,13 +29,15 @@ struct HeartsBar: View {
 struct LessonProgressBar: View {
     let progress: Double
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
+                Capsule().fill(palette.signalOff)
                 Capsule()
                     .fill(
-                        LinearGradient(colors: [.accentColor.opacity(0.7), .accentColor],
+                        LinearGradient(colors: [palette.accent.opacity(0.65), palette.accent],
                                        startPoint: .leading, endPoint: .trailing)
                     )
                     .frame(width: max(0, geometry.size.width * progress))
@@ -93,6 +97,8 @@ struct CountdownBadge: View {
 
     private var isUrgent: Bool { secondsRemaining <= 10 }
 
+    @Environment(\.palette) private var palette
+
     var body: some View {
         Text(String(format: "%d:%02d",
                     Int(secondsRemaining) / 60,
@@ -101,7 +107,7 @@ struct CountdownBadge: View {
             // El color no viaja solo: en los últimos diez segundos el texto
             // también engorda, para quien no distingue el rojo.
             .fontWeight(isUrgent ? .heavy : .semibold)
-            .foregroundStyle(isUrgent ? Color.red : .primary)
+            .foregroundStyle(isUrgent ? palette.danger : palette.textPrimary)
             .accessibilityLabel("\(Int(secondsRemaining)) segundos restantes")
     }
 }
@@ -114,30 +120,39 @@ struct JudgeBanner: View {
     let answer: Character?
     let pattern: String
 
+    @Environment(\.palette) private var palette
+
+    private var tint: Color { correct ? palette.success : palette.danger }
+
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Space.md) {
             Image(systemName: correct ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 30, weight: .bold))
-                .foregroundStyle(correct ? Color.green : Color.red)
+                .font(.rounded(.title, .bold))
+                .foregroundStyle(tint)
                 .symbolEffect(.bounce, value: correct)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.sm) {
                 Text(correct ? "¡Correcto!" : "Era \(String(target))")
-                    .font(.headline)
+                    .font(.rounded(.headline, .bold))
+                    .foregroundStyle(palette.textPrimary)
                 // El patrón se revela *después* de responder: enseñarlo antes
-                // convierte el ejercicio en lectura, no en escucha.
-                Text(pattern)
-                    .font(.system(.title3, design: .monospaced).weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .tracking(4)
+                // convierte el ejercicio en lectura, no en escucha. Dibujado y
+                // no escrito, porque el ritmo se ve de un vistazo y ".-" no.
+                if let code = MorseCode(pattern: pattern) {
+                    MorseGlyph(code: code, unit: 7, tint: tint)
+                }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, Space.lg)
+        .padding(.vertical, Space.md)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill((correct ? Color.green : Color.red).opacity(0.14))
+            RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                .fill(tint.opacity(0.14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.lg, style: .continuous)
+                        .strokeBorder(tint.opacity(0.35), lineWidth: 1.5)
+                )
         )
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .accessibilityElement(children: .combine)
@@ -156,25 +171,61 @@ struct CarrierIndicator: View {
     /// animación más larga que eso no llega a apagarse: las tres rayas de la O
     /// se funden en un único destello indistinguible de una T. Quien juega en
     /// silencio o con la linterna se queda sin poder leer la letra.
+    ///
+    /// Todo lo *decorativo* de aquí abajo (halo, anillos, sombra) puede ser
+    /// bonito porque no anima nada: cambia de golpe junto con la portadora.
     static let flashDuration: TimeInterval = 0
 
     let isKeyed: Bool
     let isPlaying: Bool
 
+    @Environment(\.palette) private var palette
+
+    private let core: CGFloat = 148
+
     var body: some View {
-        Circle()
-            .fill(isKeyed ? Color.accentColor : Color.secondary.opacity(0.18))
-            .frame(width: 96, height: 96)
-            .overlay(
-                Circle().stroke(Color.accentColor.opacity(isKeyed ? 0.45 : 0), lineWidth: 14)
-                    .scaleEffect(isKeyed ? 1.45 : 1)
-                    .animation(nil, value: isKeyed)
-            )
-            .shadow(color: .accentColor.opacity(isKeyed ? 0.6 : 0), radius: 26)
-            // Sin animación en el encendido: el destello debe caer justo con el
-            // audio. Animarlo introduciría un retardo perceptible de ~100 ms.
-            .animation(nil, value: isKeyed)
-            .opacity(isPlaying ? 1 : 0.5)
-            .accessibilityHidden(true)
+        ZStack {
+            // Halo. Solo existe con la portadora encendida y da la sensación de
+            // que el disco *emite*, en vez de cambiar de color.
+            Circle()
+                .fill(
+                    RadialGradient(colors: [palette.signalOn.opacity(0.45), .clear],
+                                   center: .center,
+                                   startRadius: core * 0.45,
+                                   endRadius: core * 1.15)
+                )
+                .frame(width: core * 2.3, height: core * 2.3)
+                .opacity(isKeyed ? 1 : 0)
+
+            // Anillo de reposo. En modo oscuro el disco apagado sobre negro
+            // era invisible: sin este borde no se sabía dónde mirar.
+            Circle()
+                .strokeBorder(palette.border, lineWidth: 2)
+                .frame(width: core * 1.42, height: core * 1.42)
+
+            Circle()
+                .strokeBorder(isKeyed ? palette.signalOn.opacity(0.55) : .clear, lineWidth: 10)
+                .frame(width: core * 1.42, height: core * 1.42)
+
+            // Disco.
+            Circle()
+                .fill(isKeyed ? palette.signalOn : palette.signalOff)
+                .frame(width: core, height: core)
+                .overlay(
+                    // Luz superior: le da volumen sin recurrir a una imagen.
+                    Circle()
+                        .fill(
+                            LinearGradient(colors: [.white.opacity(isKeyed ? 0.35 : 0.10), .clear],
+                                           startPoint: .top, endPoint: .center)
+                        )
+                )
+                .shadow(color: palette.signalOn.opacity(isKeyed ? 0.55 : 0), radius: 30)
+        }
+        // Sin animación en el encendido: el destello debe caer justo con el
+        // audio. Animarlo introduciría un retardo perceptible de ~100 ms.
+        .animation(nil, value: isKeyed)
+        .opacity(isPlaying ? 1 : 0.55)
+        .animation(.easeInOut(duration: 0.25), value: isPlaying)
+        .accessibilityHidden(true)
     }
 }

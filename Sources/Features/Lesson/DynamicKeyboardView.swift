@@ -53,25 +53,37 @@ struct KeyCap: View {
     let action: () -> Void
 
     @SwiftUI.State private var isPressed = false
+    @Environment(\.palette) private var palette
 
     var body: some View {
         Button(action: action) {
-            Text(String(character))
-                .font(.system(size: 30, weight: .bold, design: .rounded))
-                .frame(maxWidth: .infinity)
-                .frame(height: 64)
-                .foregroundStyle(foreground)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(background)
-                        .shadow(color: .black.opacity(isPressed ? 0.06 : 0.18),
-                                radius: isPressed ? 2 : 8, y: isPressed ? 1 : 4)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(border, lineWidth: 2)
-                )
-                .scaleEffect(isPressed && !reduceMotion ? 0.95 : 1)
+            VStack(spacing: Space.sm) {
+                Text(String(character))
+                    .displayFont(32, .bold, relativeTo: .title)
+
+                // Tras el veredicto la tecla enseña su ritmo. Es el momento en
+                // que el patrón ya no estorba —la respuesta está dada— y verlo
+                // junto a la letra es lo que cierra el aprendizaje.
+                if state != .idle, let code = MorseAlphabet.code(for: character) {
+                    MorseGlyph(code: code, unit: 5, tint: foreground)
+                        .transition(.opacity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 72)
+            .padding(.vertical, Space.sm)
+            .foregroundStyle(foreground)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .fill(background)
+                    .shadow(color: .black.opacity(isPressed ? 0.05 : 0.14),
+                            radius: isPressed ? 2 : 10, y: isPressed ? 1 : 5)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .strokeBorder(border, lineWidth: state == .idle ? 1.5 : 2.5)
+            )
+            .scaleEffect(isPressed && !reduceMotion ? 0.95 : 1)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -88,28 +100,30 @@ struct KeyCap: View {
     // además borde propio, para daltonismo y para "Aumentar contraste".
     private var background: Color {
         switch state {
-        case .idle:    return Color(.secondarySystemBackground)
-        case .correct: return .green.opacity(0.22)
-        case .wrong:   return .red.opacity(0.22)
-        case .dimmed:  return Color(.secondarySystemBackground).opacity(0.5)
+        case .idle:    return palette.surfaceRaised
+        case .correct: return palette.success.opacity(0.18)
+        case .wrong:   return palette.danger.opacity(0.18)
+        case .dimmed:  return palette.surface.opacity(0.6)
         }
     }
 
     private var border: Color {
         switch state {
-        case .idle:    return .clear
-        case .correct: return .green
-        case .wrong:   return .red
-        case .dimmed:  return .clear
+        // En reposo la tecla ya no es un rectángulo gris flotando sobre otro
+        // gris: el borde la separa del fondo también en modo oscuro.
+        case .idle:    return palette.border
+        case .correct: return palette.success
+        case .wrong:   return palette.danger
+        case .dimmed:  return palette.border.opacity(0.5)
         }
     }
 
     private var foreground: Color {
         switch state {
-        case .idle:    return .primary
-        case .correct: return .green
-        case .wrong:   return .red
-        case .dimmed:  return .secondary
+        case .idle:    return palette.textPrimary
+        case .correct: return palette.success
+        case .wrong:   return palette.danger
+        case .dimmed:  return palette.textSecondary
         }
     }
 }
