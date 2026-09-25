@@ -38,6 +38,39 @@ struct LessonSummary: Equatable, Sendable {
     let mastered: Bool
     let medianResponseTime: TimeInterval
     let weakSpots: [WeakSpot]
+    /// Por qué no se superó el nivel. Sin esto, quien acertaba casi todo veía
+    /// «Otra pasada» sin saber qué le pedían y lo tomaba por un fallo de la app.
+    var shortfall: MasteryShortfall? = nil
+}
+
+/// El primer requisito de dominio que no se cumplió.
+enum MasteryShortfall: Equatable, Sendable {
+    case incomplete
+    case accuracy(achieved: Double, required: Double, window: Int)
+    case newCharacter(Character, correct: Int, required: Int)
+    case speed(median: TimeInterval, required: TimeInterval)
+
+    var message: String {
+        switch self {
+        case .incomplete:
+            return "La partida terminó antes de poder medir el nivel."
+        case let .accuracy(achieved, required, window):
+            return "En los últimos \(window) ejercicios acertaste el \(Int((achieved * 100).rounded(.down)))%. "
+                + "Hace falta el \(Int((required * 100).rounded()))%."
+        case let .newCharacter(character, correct, required):
+            return "Te faltan aciertos de la \(String(character)): llevas \(correct) de \(required)."
+        case let .speed(median, required):
+            // Con un decimal, 1,93 frente a 1,92 se leería «1,9 s… hace falta 1,9 s».
+            var digits = 1
+            if Self.seconds(median, digits) == Self.seconds(required, digits) { digits = 2 }
+            return "Acertaste, pero te faltó rapidez al escuchar: tardas \(Self.seconds(median, digits)) "
+                + "en responder y hace falta \(Self.seconds(required, digits))."
+        }
+    }
+
+    private static func seconds(_ value: TimeInterval, _ digits: Int) -> String {
+        value.formatted(.number.precision(.fractionLength(digits))) + " s"
+    }
 }
 
 enum LessonPhase: Equatable, Sendable {

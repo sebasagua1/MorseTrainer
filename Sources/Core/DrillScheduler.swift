@@ -100,14 +100,25 @@ struct DrillScheduler {
     private let noveltyWeight = 2.0      // impulso a los caracteres nuevos del nivel
     private let recencyPenalty = 0.65    // evita repetir lo que acaba de salir
 
+    /// Parte mínima del sorteo reservada a los caracteres nuevos mientras aún
+    /// les faltan aciertos en la sesión. Sin suelo, un alfabeto de 20 letras
+    /// con confusiones acumuladas ahogaba al nuevo: salía 2-3 veces por
+    /// partida, el nivel pedía 6 aciertos y no se aprobaba nunca.
+    private let newCharacterShare = 0.5
+
     /// `seededStats` / `seededConfusions` vienen de `PersistenceStore`: es lo
     /// que el motor ya sabía del jugador antes de empezar la lección.
+    /// `newCharacterTarget` son los aciertos de sesión que necesita cada
+    /// carácter nuevo (`MasteryRule.minCorrectPerNewCharacter`): hasta
+    /// alcanzarlos, el motor garantiza que salga.
     init(alphabet: [Character],
          newCharacters: [Character] = [],
+         newCharacterTarget: Int = 8,
          seededStats: [Character: CharacterStat] = [:],
          seededConfusions: [ConfusionPair: Int] = [:]) {
         self.alphabet = alphabet
         self.newCharacters = Set(newCharacters)
+        self.newCharacterTarget = newCharacterTarget
         self.confusions = seededConfusions
         for character in alphabet {
             stats[character] = seededStats[character] ?? CharacterStat(character: character)
@@ -115,6 +126,16 @@ struct DrillScheduler {
     }
 
     private let newCharacters: Set<Character>
+    private let newCharacterTarget: Int
+
+    /// Carácter nuevo al que aún le faltan aciertos **de esta sesión**. Se mide
+    /// sobre la sesión y no sobre el histórico: si no, al reintentar un nivel
+    /// el carácter nuevo ya traía intentos sembrados, perdía el empuje y el
+    /// requisito de aciertos se volvía inalcanzable.
+    func needsExposure(_ character: Character) -> Bool {
+        newCharacters.contains(character)
+            && sessionCorrect[character, default: 0] < newCharacterTarget
+    }
 
     // MARK: Selección
 
@@ -135,22 +156,62 @@ struct DrillScheduler {
         weight += confusionWeight * min(pull / 3.0, 1.5)
 
         // 3. Novedad: el carácter recién introducido necesita exposiciones.
-        if newCharacters.contains(character), stat.attempts < 8 { weight += noveltyWeight }
+        let isPending = needsExposure(character)
+        if isPending { weight += noveltyWeight }
 
         // 4. Recencia: penaliza lo visto en los últimos 2 ítems.
         let distance = itemIndex - stat.lastSeenIndex
         if distance <= 2 { weight *= recencyPenalty }
 
         // 5. Techo de dominio: al 90 % sostenido casi desaparece de la cola,
-        //    pero nunca del todo (el repaso de fondo evita el olvido).
-        if stat.attempts >= 6 && stat.accuracy >= 0.90 { weight *= 0.35 }
+        //    pero nunca del todo (el repaso de fondo evita el olvido). No se
+        //    aplica al carácter nuevo mientras el nivel aún le pida aciertos.
+        if !isPending, stat.attempts >= 6 && stat.accuracy >= 0.90 { weight *= 0.35 }
 
         return max(weight, 0.15)
     }
 
+    /// Pesos del sorteo. Parte de `weight(for:)` y, si hay caracteres nuevos
+    /// pendientes, les sube el peso hasta que juntos sumen `newCharacterShare`.
+    /// Lo que acaba de salir no entra en el suelo: así el nuevo se alterna con
+    /// el repaso en vez de encadenarse cinco veces seguidas.
+    func drawWeights() -> [Double] {
+        var weights = alphabet.map { weight(for: $0) }
+        let boosted = alphabet.indices.filter { index in
+            let character = alphabet[index]
+            let lastSeen = stats[character]?.lastSeenIndex ?? -999
+            return needsExposure(character) && itemIndex - lastSeen > 1
+        }
+        let boostedTotal = boosted.reduce(0) { $0 + weights[$1] }
+        let restTotal = weights.reduce(0, +) - boostedTotal
+        guard boostedTotal > 0, restTotal > 0,
+              boostedTotal / (boostedTotal + restTotal) < newCharacterShare else { return weights }
+        let factor = newCharacterShare * restTotal / ((1 - newCharacterShare) * boostedTotal)
+        for index in boosted { weights[index] *= factor }
+        return weights
+    }
+
+    /// Aciertos de sesión que aún les faltan, entre todos, a los caracteres nuevos.
+    var pendingNewCorrect: Int {
+        newCharacters.reduce(0) { $0 + max(0, newCharacterTarget - sessionCorrect[$1, default: 0]) }
+    }
+
     /// Muestreo por ruleta ponderada.
-    func nextCharacter(using generator: inout some RandomNumberGenerator) -> Character {
-        let weights = alphabet.map { weight(for: $0) }
+    ///
+    /// `slotsLeft` son los ejercicios de carácter que quedan en la partida,
+    /// contando este. Si ya no sobra ninguno para los aciertos que le faltan al
+    /// carácter nuevo, sale él sin sorteo: la suerte del muestreo no puede
+    /// dejar un nivel sin aprobar a quien lo está haciendo bien.
+    func nextCharacter(slotsLeft: Int? = nil,
+                       using generator: inout some RandomNumberGenerator) -> Character {
+        if let slotsLeft, slotsLeft <= pendingNewCorrect {
+            let pending = alphabet.filter(needsExposure)
+            let neediest = pending.max { lhs, rhs in
+                sessionCorrect[lhs, default: 0] > sessionCorrect[rhs, default: 0]
+            }
+            if let neediest { return neediest }
+        }
+        let weights = drawWeights()
         let total = weights.reduce(0, +)
         var cursor = Double.random(in: 0..<total, using: &generator)
         for (index, weight) in weights.enumerated() {
@@ -160,9 +221,9 @@ struct DrillScheduler {
         return alphabet.last ?? "E"
     }
 
-    func nextCharacter() -> Character {
+    func nextCharacter(slotsLeft: Int? = nil) -> Character {
         var generator = SystemRandomNumberGenerator()
-        return nextCharacter(using: &generator)
+        return nextCharacter(slotsLeft: slotsLeft, using: &generator)
     }
 
     // MARK: Registro
@@ -193,17 +254,29 @@ struct DrillScheduler {
     // MARK: Criterio de dominio
 
     func hasMastered(_ rule: MasteryRule, rollingResults: [Bool]) -> Bool {
+        shortfall(for: rule, rollingResults: rollingResults) == nil
+    }
+
+    /// Qué le faltó al jugador para dominar el nivel, o `nil` si lo domina.
+    /// La mediana de respuesta no se mira aquí: la mide la lección, que es
+    /// quien sabe qué ejercicios eran de recepción.
+    func shortfall(for rule: MasteryRule, rollingResults: [Bool]) -> MasteryShortfall? {
         let window = rollingResults.suffix(rule.rollingWindow)
-        guard window.count >= rule.rollingWindow else { return false }
+        guard window.count >= rule.rollingWindow else { return .incomplete }
         let accuracy = Double(window.filter { $0 }.count) / Double(window.count)
-        guard accuracy >= rule.requiredAccuracy else { return false }
+        guard accuracy >= rule.requiredAccuracy else {
+            return .accuracy(achieved: accuracy, required: rule.requiredAccuracy,
+                             window: rule.rollingWindow)
+        }
         // Se exige `sessionCorrect`, no `stat.correct`: el histórico sembrado
         // informa la cola, pero no aprueba el nivel por el jugador.
-        for character in newCharacters {
-            guard sessionCorrect[character, default: 0] >= rule.minCorrectPerNewCharacter else {
-                return false
+        for character in newCharacters.sorted() {
+            let correct = sessionCorrect[character, default: 0]
+            guard correct >= rule.minCorrectPerNewCharacter else {
+                return .newCharacter(character, correct: correct,
+                                     required: rule.minCorrectPerNewCharacter)
             }
         }
-        return true
+        return nil
     }
 }

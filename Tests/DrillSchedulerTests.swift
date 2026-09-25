@@ -122,6 +122,74 @@ struct DrillSchedulerTests {
         #expect(sut.hasMastered(rule, rollingResults: Array(repeating: true, count: 10)))
     }
 
+    /// Regresión: el empuje al carácter nuevo dependía de los intentos
+    /// *históricos*. Al reintentar un nivel el nuevo llegaba sembrado, perdía
+    /// el empuje, el resto del alfabeto (con sus confusiones acumuladas) se
+    /// llevaba el sorteo y el requisito de aciertos no se cumplía nunca.
+    @Test("Un jugador que acierta todo aprueba aunque reintente con historial cargado")
+    func newCharacterGetsEnoughExposureOnRetry() {
+        let alphabet = Array("ETANIMSOURCDKGWHBLPJ")
+        let newCharacter: Character = "J"
+        var stats: [Character: CharacterStat] = [:]
+        for character in alphabet {
+            var stat = CharacterStat(character: character)
+            stat.attempts = 12
+            stat.correct = 12
+            stats[character] = stat
+        }
+        // Confusiones saturadas en todo el alfabeto viejo: el peor caso.
+        var confusions: [ConfusionPair: Int] = [:]
+        for (shown, answered) in zip(alphabet, alphabet.dropFirst()) where shown != newCharacter {
+            confusions[ConfusionPair(shown: shown, answered: answered)] = 3
+        }
+        let rule = MasteryRule(rollingWindow: 24, requiredAccuracy: 0.9,
+                               minCorrectPerNewCharacter: 6, medianResponseTime: 2)
+        let slots = 26
+
+        for _ in 0..<200 {
+            var sut = DrillScheduler(alphabet: alphabet, newCharacters: [newCharacter],
+                                     newCharacterTarget: rule.minCorrectPerNewCharacter,
+                                     seededStats: stats, seededConfusions: confusions)
+            for item in 0..<slots {
+                let character = sut.nextCharacter(slotsLeft: slots - item)
+                sut.record(shown: character, answered: character, responseTime: 1)
+            }
+            #expect(sut.shortfall(for: rule, rollingResults: Array(repeating: true, count: slots)) == nil)
+        }
+    }
+
+    @Test("Sin margen para el sorteo, sale el carácter nuevo")
+    func newCharacterIsForcedWhenSlotsRunOut() {
+        let sut = DrillScheduler(alphabet: ["E", "T", "A"], newCharacters: ["A"],
+                                 newCharacterTarget: 2)
+        for _ in 0..<50 { #expect(sut.nextCharacter(slotsLeft: 2) == "A") }
+    }
+
+    @Test("El carácter nuevo no acapara el sorteo cuando ya cumplió")
+    func newCharacterFadesAfterTarget() {
+        var sut = DrillScheduler(alphabet: ["E", "T", "A"], newCharacters: ["A"],
+                                 newCharacterTarget: 2)
+        let before = sut.weight(for: "A")
+        for _ in 0..<2 { sut.record(shown: "A", answered: "A", responseTime: 1) }
+        #expect(!sut.needsExposure("A"))
+        #expect(sut.weight(for: "A") < before)
+    }
+
+    @Test("El resumen dice qué faltó para aprobar")
+    func shortfallExplainsFailure() {
+        var sut = scheduler(["E", "T"], new: ["E"])
+        sut.record(shown: "E", answered: "E", responseTime: 1)
+        let perfect = Array(repeating: true, count: 10)
+        #expect(sut.shortfall(for: rule, rollingResults: perfect)
+                == .newCharacter("E", correct: 1, required: 3))
+
+        let sloppy = Array(repeating: true, count: 8) + [false, false]
+        guard case .accuracy(let achieved, _, _) = sut.shortfall(for: rule, rollingResults: sloppy) else {
+            Issue.record("se esperaba falta de precisión"); return
+        }
+        #expect(abs(achieved - 0.8) < 0.001)
+    }
+
     @Test("La siembra sí influye en el peso inicial")
     func seedingAffectsWeights() {
         var weak = CharacterStat(character: "T")

@@ -349,6 +349,14 @@ struct LessonSummaryView: View {
             }
             .padding(.vertical, 8)
 
+            if !summary.mastered, let shortfall = summary.shortfall {
+                Text(shortfall.message)
+                    .font(.callout.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 24)
+            }
+
             if let weak = summary.weakSpots.first {
                 Text("Tu punto débil: \(String(weak.pair.shown)) frente a \(String(weak.pair.answered))")
                     .font(.subheadline)

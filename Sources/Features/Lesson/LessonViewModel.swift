@@ -147,6 +147,7 @@ final class LessonViewModel: ObservableObject {
         seededConfusions = seed.confusions
         scheduler = DrillScheduler(alphabet: session.alphabet,
                                    newCharacters: session.newCharacters,
+                                   newCharacterTarget: level?.mastery.minCorrectPerNewCharacter ?? 8,
                                    seededStats: seededStats,
                                    seededConfusions: seededConfusions)
         store?.registerPlay()
@@ -222,7 +223,9 @@ final class LessonViewModel: ObservableObject {
            let word = words.randomElement() {
             return Drill(kind: .word, prompt: word, options: [])
         }
-        let character = scheduler.nextCharacter()
+        // Ejercicios de carácter que quedan antes de la zona de palabras.
+        let slotsLeft = session.itemLimit.map { $0 - session.mix.wordRounds - itemsCompleted }
+        let character = scheduler.nextCharacter(slotsLeft: slotsLeft)
         if preferReception() {
             return Drill(kind: .reception,
                          prompt: String(character),
@@ -314,9 +317,12 @@ final class LessonViewModel: ObservableObject {
         lastTarget = target
         scheduler.record(shown: target, answered: answer, responseTime: responseTime)
         rollingResults.append(correct)
-        // La mediana de respuesta mide reconocimiento de un carácter suelto:
-        // las rondas de palabra duran varios segundos y la falsearían.
-        if correct, drill?.kind != .word { responseTimes.append(responseTime) }
+        // La mediana de respuesta mide reconocimiento *de oído*, que es lo que
+        // pide `MasteryRule`. La transmisión no entra: su tiempo incluye el
+        // silencio de cierre del manipulador (≥ 0,9 s) más teclear el patrón.
+        // Desde el nivel de la O la mezcla llega al 50 % de transmisión, la
+        // mediana caía en esos tiempos y el nivel no se aprobaba nunca.
+        if correct, drill?.kind == .reception { responseTimes.append(responseTime) }
 
         if correct {
             comboStreak += 1
@@ -366,9 +372,14 @@ final class LessonViewModel: ObservableObject {
         // El dominio solo existe en la campaña: los modos libres no enseñan
         // caracteres nuevos, así que no hay nada que desbloquear.
         var mastered = false
+        var shortfall: MasteryShortfall?
         if let level {
-            mastered = scheduler.hasMastered(level.mastery, rollingResults: rollingResults)
-                && medianResponseTime <= level.mastery.medianResponseTime
+            shortfall = scheduler.shortfall(for: level.mastery, rollingResults: rollingResults)
+            if shortfall == nil, medianResponseTime > level.mastery.medianResponseTime {
+                shortfall = .speed(median: medianResponseTime,
+                                   required: level.mastery.medianResponseTime)
+            }
+            mastered = shortfall == nil
             if mastered {
                 copperEarned += level.copperReward
                 copperEarned += hearts * 5
@@ -376,7 +387,8 @@ final class LessonViewModel: ObservableObject {
             }
         }
 
-        let summary = makeSummary(mastered: mastered)
+        var summary = makeSummary(mastered: mastered)
+        summary.shortfall = shortfall
         persist(summary)
         phase = .completed(summary)
     }
